@@ -32,7 +32,7 @@ storage = {
 
 
 /** Handles httpRequests. 
- * @version 0.1.0 */
+ * @version 0.2.0 */
 myHttpRequests = {
     /** The class used to contain "about me" summaries on the front page. */
     aboutClass: '_4_ug',
@@ -79,7 +79,7 @@ myHttpRequests = {
      * 
      *Prints facebook location.
      * @param {String} dest The facebook profile to GET. 
-     * @param {Function} callback (Optional.) If set, the action to perform on load. 
+     * @param {Function} callback The action to perform on load. 
      * Expects one parameter: Object/Associative array. Where the members are:
      * lives: "Lives in String", from: "From String". 
      *  
@@ -120,20 +120,20 @@ myHttpRequests = {
                 my_log("error!"); //TODO remove log
             }
         }
-        );
-        my_log("GM_httpReq? "+ GM_xmlhttpRequest); //TODO remove log
+        );        
     },
     
     /** Attempts to google the location to get the current time their.
      * @param {String} location The location to search and check the time of.
-     * @param {Function} callback (Optional.) If set, the action to perform on load. 
+     * @param {Function} callback The action to perform on load. 
      * Will pass parameter {Object} of the form:
-     * { lives: "Lives in String", from: "From String"}, 
-     * where the default values are blank strings.
+     * { time: "H:MMpm/am", timezone: "(PDT)", day: "Monday"}, 
+     * where the default values are blank strings. 
+     * If no answer can be found it will pass the string: "No answer found."
      */
     googleCurrentTime:function(location, callback){
         var dest = "http://www.google.com/search?q=" +myHttpRequests.googleQueryStub + location;
-        //postStub.replace(/ /gi, "\+"); //
+        
         GM_xmlhttpRequest({
           method: "GET",
           url: dest,
@@ -147,24 +147,40 @@ myHttpRequests = {
                     my_log("parsing...");     //TODO Remove log
                     responseXML = new DOMParser().parseFromString(response.responseText, "text/html"); 
                 } else {
-                    my_log("recevied."); //TODO Remove log
                     responseXML = response.responseXML;
                 }
                 var answer = responseXML.documentElement.getElementsByClassName('obcontainer');
-                //responseXML.documentElement.getElementsByClassName('vk_c vk_gy vk_sh');
-                if (answer.length <= 0 ){
-                  my_log("none found ");   //TODO Remove log
-                  return;  
-                } 
-                my_log("answer? ");   //TODO Remove log
-                var table = answer[0].getElementsByTagName('table');
-                my_log("answer " + table.length)  //TODO Remove log
+                if (answer && answer.length){                
+                    var table = answer[0].getElementsByTagName('table'); //check first item
+                    if (table && table.length){
+                        var inner = "" + table[0].getElementsByTagName('td')[0].innerHTML;
+                        var result = new Object();
+                        result['time'] = "";
+                        result['timezone'] = "";
+                        result['day'] = "";
+                        
+                        //gets first bold tag, typically time
+                        result['time'] = table[0].getElementsByTagName('b')[0].innerHTML; 
+                        //gets first bracketed data (minus brackets), typically timezone
+                        result['timezone'] = inner.substring(inner.indexOf("(")+1, inner.indexOf(")") );
+                        
+                        var days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+                        for(var i=0,j=days.length; i<j; i++){
+                            var index = inner.indexOf(days[i]);
+                            //Checks to see if it not only exists but that it refers to the day not the location. 
+                            if (index > 0 && index < inner.length/2 ){
+                                my_log(index+" "+inner.length);
+                              result['day'] = days[i];
+                              break;
+                          }                            
+                        };                                        
+                        my_log("table "+i+" : "+inner); //TODO Remove log
+                        callback(result);
+                    }
+                } else {
+                    callback("No answer found.");                    
+                }
                 
-                for(var i=0,j=table.length; i<j; i++){
-                    //if (table[i].getElementsByTagName[td].length == 1)
-                        my_log("table "+i+" : "+table[i].innerHTML); //TODO Remove log
-                };
-                //my_log("Google result: " + answer[0].innerHTML); //TODO Remove log
             },
         
             onprogress:function(response){
@@ -185,7 +201,7 @@ myHttpRequests = {
  */ 
  
 /** Responsible for checking the page for changes and attaching events.
- * @version 0.1.0 */
+ * @version 0.2.0 */
 pageMonitor = {
     /** Check frequency in milliseconds. */
     checkFrequency: 5000,
@@ -274,12 +290,32 @@ pageMonitor = {
         my_log(locations.lives); //TODO Remove log
         my_log(locations.from); //TODO Remove log
         if (locations.lives){
-            myHttpRequests.googleCurrentTime(locations.lives);
+            myHttpRequests.googleCurrentTime(locations.lives, pageMonitor.processLocationTime);
         } else if (locations.from) {
-            myHttpRequests.googleCurrentTime(locations.from);
+            myHttpRequests.googleCurrentTime(locations.from, pageMonitor.processLocationTime);
         } else {
             my_log("nothing available. =/") //TODO Remove log
         }
+    },
+    /** Expects an Object with the members: { time: "H:MMpm/am", timezone: "(PDT)", day: "Monday"} 
+     * 
+     * */
+    processLocationTime:function(results){
+        my_log(results);
+        
+        var time = ""+results.time; 
+        var hours = time.substring(0, time.indexOf(":"));
+        var minutes =  time.substr(time.indexOf(":")+1, 2);
+        
+        if (time.toLowerCase().contains("pm") && parseInt(hours) < 12){
+            hours = parseInt(hours) + 12;
+        } else if (hours == 12){
+            hours = 0;
+        }
+        
+        my_log("24 hr: "+  results.day + " "+ hours + ":" + minutes + " " + results.timezone);
+        
+               
     },
     
     /** Starts the monitor. */ 
