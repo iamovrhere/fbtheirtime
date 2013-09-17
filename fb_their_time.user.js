@@ -13,6 +13,8 @@
      unsafeWindow.console.log(arg); 
 }
 
+var DAYS_OF_WEEK = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
 /** Not implemented. Reads and writies objects to storage. 
  *  @version 0.1.0 */
 storage = {
@@ -127,7 +129,7 @@ myHttpRequests = {
      * @param {String} location The location to search and check the time of.
      * @param {Function} callback The action to perform on load. 
      * Will pass parameter {Object} of the form:
-     * { time: "H:MMpm/am", timezone: "(PDT)", day: "Monday"}, 
+     * { time: "H:MMpm/am", timezone: "(PDT)", day: "Monday", dayIndex: 1 }, 
      * where the default values are blank strings. 
      * If no answer can be found it will pass the string: "No answer found."
      */
@@ -158,19 +160,21 @@ myHttpRequests = {
                         result['time'] = "";
                         result['timezone'] = "";
                         result['day'] = "";
+                        result['dayIndex'] = "";
                         
                         //gets first bold tag, typically time
                         result['time'] = table[0].getElementsByTagName('b')[0].innerHTML; 
                         //gets first bracketed data (minus brackets), typically timezone
                         result['timezone'] = inner.substring(inner.indexOf("(")+1, inner.indexOf(")") );
                         
-                        var days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-                        for(var i=0,j=days.length; i<j; i++){
-                            var index = inner.indexOf(days[i]);
+                        
+                        for(var i=0,j=DAYS_OF_WEEK.length; i<j; i++){
+                            var index = inner.indexOf(DAYS_OF_WEEK[i]);
                             //Checks to see if it not only exists but that it refers to the day not the location. 
                             if (index > 0 && index < inner.length/2 ){
                                 my_log(index+" "+inner.length);
-                              result['day'] = days[i];
+                              result['day'] = DAYS_OF_WEEK[i];
+                              result['dayIndex'] = i;
                               break;
                           }                            
                         };                                        
@@ -297,24 +301,50 @@ pageMonitor = {
             my_log("nothing available. =/") //TODO Remove log
         }
     },
-    /** Expects an Object with the members: { time: "H:MMpm/am", timezone: "(PDT)", day: "Monday"} 
-     * 
+    /** Processes the results of the location time search. 
+     * @param {Object} results The results of the location time search. Typically of the form:
+     * { time: "H:MMpm/am", timezone: "(PDT)", day: "Monday", dayIndex: 1}
      * */
     processLocationTime:function(results){
         my_log(results);
+        var today = new Date();
+        var tDayIndex = today.getDay();
         
         var time = ""+results.time; 
-        var hours = time.substring(0, time.indexOf(":"));
-        var minutes =  time.substr(time.indexOf(":")+1, 2);
+        var lHours = time.substring(0, time.indexOf(":"));
+        var lMinutes =  time.substr(time.indexOf(":")+1, 2);
         
-        if (time.toLowerCase().contains("pm") && parseInt(hours) < 12){
-            hours = parseInt(hours) + 12;
-        } else if (hours == 12){
-            hours = 0;
+        var minsDiff = lMinutes - today.getMinutes();
+         
+        
+        if (time.toLowerCase().contains("pm") && parseInt(lHours) < 12){
+            lHours = parseInt(lHours) + 12;
+        } else if (lHours == 12){
+            lHours = 0;
         }
         
-        my_log("24 hr: "+  results.day + " "+ hours + ":" + minutes + " " + results.timezone);
+        //whether *my* time is a day ahead (+1), behind(-1) or the same (0).
+        var dayDifference = 0; 
+        if (tDayIndex == results.dayIndex ){
+        } else if ( tDayIndex > results.dayIndex || tDayIndex == 6 ){
+            dayDifference = 1;
+        } else if ( tDayIndex < results.dayIndex ||  results.dayIndex == 6){
+            dayDifference = -1;
+        }
         
+        //-ve is behind, +ve is ahead.  
+        var hoursDiff =  (today.getHours() - lHours + 24*dayDifference)%24;
+        
+        if (lMinutes > 50 && !today.getMinutes() ){
+            //retrieved time is after 50, and the local time is on the hour
+            hoursDiff -= 1; //reduce by one hour.
+        }
+        //reduce to either 30 or 0
+        //minsDiff = Math.abs(minsDiff) > 20 ? 30 : 0;  
+        
+        
+        my_log("24 hr: "+  results.day + " "+ lHours + ":" + lMinutes + " " + results.timezone);
+        my_log("difference: " + hoursDiff +" hrs " + minsDiff +" minutes")
                
     },
     
