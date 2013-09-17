@@ -15,25 +15,55 @@
 
 var DAYS_OF_WEEK = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-/** Not implemented. Reads and writies objects to storage. 
+
+/** Reads and writes objects to storage. 
+ * It is worth noting this cannot be inspected by cookie manager.
+ * 
  *  @version 0.1.0 */
 storage = {
+    /** The name of our localStore for encapsulation purposes. */
+    id: 'fb_their_time_script',
+    /** Erases all storage. */
+    eraseStorage:function(){localStorage.removeItem(storage.id); },
     /** Stores object to local storage.  
-     * @param {String} key The key of the temporary session.
-     * @param {Object} object  The JSON object to be stored.  */
-    setObject:function(key, object){ 
-       // sessionStorage.setItem(key, JSON.stringify(object) ); 
+     * @param {String} key The key in the localStorage item.
+     * @param {Object} object  The object to be stored.  */
+    setObject:function(key, object){
+        var value = localStorage.getItem(storage.id);         
+        try{
+            if (!value){
+                value = JSON.stringify({});
+            }
+            var obj = JSON.parse(value);
+            obj[key] = object;
+            value = JSON.stringify(obj);
+            //my_log(value);
+        } catch (e){
+                my_log("Error occurred: " + e );                                
+        } 
+        localStorage.setItem(storage.id, value );
     },
+    
     /** Retrieves an Object stored to local storage, parses and returns it.
      * @param {String} key The key of the session.  
-     * @returns  The store JSON Object. */
+     * @returns  The stored Object or <code>null</code>. */
     getObject:function(key) {  
-        //return JSON.parse ( sessionStorage.getItem(key) ); 
+        var value = localStorage.getItem(storage.id); 
+        if (value){
+            try{
+                var obj = JSON.parse (value);
+                return obj[key];
+            } catch (e){
+                my_log("Error occurred: " + e);
+                return null;                
+            }
+        }
+       return null;
     }
 }
 
 
-/** Handles httpRequests. 
+/** Handles httpRequests to facebook and google. 
  * @version 0.2.0 */
 myHttpRequests = {
     /** The class used to contain "about me" summaries on the front page. */
@@ -361,5 +391,11 @@ pageMonitor = {
 }
 
 //start monitoring
-pageMonitor.start();
-
+//pageMonitor.start();
+var key = "woooo246";
+var test = storage.getObject(key);
+if (test)
+my_log("store test:  " + test.testing + test.test2.nest);
+storage.setObject(key, {testing: "duck", test2: {nest: "duck2"} } );
+//storage.eraseStorage();
+my_log("completed");
