@@ -16,6 +16,10 @@
 var DAYS_OF_WEEK = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 
+
+///////////////////////////////////////////////////////////////////////
+///// Start storage object
+///////////////////////////////////////////////////////////////////////
 /** Reads and writes objects to storage. 
  * It is worth noting this cannot be inspected by cookie manager.
  * 
@@ -37,7 +41,7 @@ storage = {
             var obj = JSON.parse(value);
             obj[key] = object;
             value = JSON.stringify(obj);
-            //my_log(value);
+            my_log(value);
         } catch (e){
                 my_log("Error occurred: " + e );                                
         } 
@@ -63,16 +67,26 @@ storage = {
 }
 
 
+///////////////////////////////////////////////////////////////////////
+///// End storage
+///////////////////////////////////////////////////////////////////////
+
+
+///////////////////////////////////////////////////////////////////////
+///// Start myHttpRequests object
+///////////////////////////////////////////////////////////////////////
+
 /** Handles httpRequests to facebook and google. 
- * @version 0.2.0 */
+ * @version 0.3.0 */
 myHttpRequests = {
     /** The class used to contain "about me" summaries on the front page. */
     aboutClass: '_4_ug',
     /** The query stub to determine a location's time. */
     googleQueryStub: 'current time in ', 
     
-    /** Gathers the location from the DOM. 
-     * @param {Element} dom The dom the analise and check. 
+    /** 
+     * Gathers the location from the DOM. 
+     * @param {DOM} dom The dom the analise and check.       
      * @return {Object} An Object of the form:
      * { lives: "Lives in String", from: "From String"}. The default values are blank strings.
      * */
@@ -105,18 +119,16 @@ myHttpRequests = {
         return htmlText;
     },
     /** 
-     * Does not work. Gets the facebook page, but it is not signed in. 
-     * Could pass password etc. But why not try injected script for same domain? 
-     * 
-     * 
-     *Prints facebook location.
+     * Parses facebook's page, strips the comments and exracts the location data.
      * @param {String} dest The facebook profile to GET. 
-     * @param {Function} callback The action to perform on load. 
+     * @param {Function} callback The action to perform on load.
      * Expects one parameter: Object/Associative array. Where the members are:
-     * lives: "Lives in String", from: "From String". 
+     * lives: "Lives in String", from: "From String".
+     * @param {Object} callbackContext (Optional). The context to perform the callback in 
+     * (important for chaining).  
      *  
      * */
-    facebookLocation:function(dest, callback) {
+    facebookLocation:function(dest, callback, callbackContext) {
         my_log("trying "+dest); //TODO remove log
         GM_xmlhttpRequest({
           method: "GET",
@@ -139,9 +151,12 @@ myHttpRequests = {
                 
                 var locs = myHttpRequests.fbLocationFromDOM(responseXML.documentElement);
                 my_log("tried "+dest); //TODO remove log
-                if (callback){                    
-                    callback(locs);
-                }
+                if (callbackContext){                    
+                    my_log("context "+callbackContext.toString()); //TODO remove log
+                    callback.call(callbackContext, locs);
+                } else
+                  callback(locs);    
+                
                   
             },
         
@@ -155,15 +170,20 @@ myHttpRequests = {
         );        
     },
     
-    /** Attempts to google the location to get the current time their.
+    /** 
+     * Attempts to google the location to get the current time there.
+     * 
      * @param {String} location The location to search and check the time of.
      * @param {Function} callback The action to perform on load. 
      * Will pass parameter {Object} of the form:
      * { time: "H:MMpm/am", timezone: "(PDT)", day: "Monday", dayIndex: 1 }, 
      * where the default values are blank strings. 
      * If no answer can be found it will pass the string: "No answer found."
-     */
-    googleCurrentTime:function(location, callback){
+     * @param {Object} callbackContext (Optional). The context to perform the callback in
+     * (important for chaining).
+     *   
+     * */
+    googleCurrentTime:function(location, callback, callbackContext) {
         var dest = "http://www.google.com/search?q=" +myHttpRequests.googleQueryStub + location;
         
         GM_xmlhttpRequest({
@@ -200,20 +220,27 @@ myHttpRequests = {
                         
                         for(var i=0,j=DAYS_OF_WEEK.length; i<j; i++){
                             var index = inner.indexOf(DAYS_OF_WEEK[i]);
-                            //Checks to see if it not only exists but that it refers to the day not the location. 
-                            if (index > 0 && index < inner.length/2 ){
-                                my_log(index+" "+inner.length);
+                            //Checks to see if it not only exists but that it refers to the day not the location.
+                              
+                            if (index > 0 && index < inner.length/2 ){                               
                               result['day'] = DAYS_OF_WEEK[i];
                               result['dayIndex'] = i;
                               break;
                           }                            
                         };                                        
                         my_log("table "+i+" : "+inner); //TODO Remove log
-                        callback(result);
+                        my_log(callback) //TODO remove log
+                        
                     }
                 } else {
-                    callback("No answer found.");                    
+                    result= "No answer found.";                    
                 }
+                
+                if (callbackContext){
+                    my_log("context "+callbackContext.toString); //TODO remove log                    
+                    callback.call(callbackContext, result);                    
+                } else
+                  callback(result);    
                 
             },
         
@@ -225,8 +252,128 @@ myHttpRequests = {
             }
         }
         ); 
+    },
+    
+    foo:function(){}
+}
+
+///////////////////////////////////////////////////////////////////////
+///// End myHttpRequests
+///////////////////////////////////////////////////////////////////////
+
+
+///////////////////////////////////////////////////////////////////////
+///// Start ProfileTime object
+///////////////////////////////////////////////////////////////////////
+
+/** Creates a profile time object. 
+ * This will first attempt to fetches the time difference from the cookies. 
+ * If it cannot it will attempt to fetch via HttpRequests. Once the time difference is acquired
+ * the resulting time difference will be returned. 
+ * @version 0.1.0
+ * @this ProfileTime
+ * @param {String} profileUrl The facebook profile to check time of. */
+function ProfileTime(profileUrl){
+    var searchString = ".com/"
+    var start = profileUrl.indexOf(searchString) + searchString.length;
+    
+    this.url = profileUrl;
+    this.username = profileUrl.substring(start); 
+    this.myself = this;
+    my_log(this.username);
+}
+
+/** Simple toString function for debugging purposes. */
+ProfileTime.prototype.toString = function() {
+  return "ProfileTime";
+};
+
+
+
+/** Attempts to get the time by checking the cookies and parsing the time difference. 
+ * If the difference is not available or too old, it is gathered from their profile page. 
+ * @this ProfileTime */
+ProfileTime.prototype.getTime = function() {
+    myHttpRequests.facebookLocation(this.url, this.checkLocationTime, this);
+};
+
+/** The action to perform once the fb check has completed. 
+ * @this ProfileTime
+ * @param {Object} locations Expecting an object/associative array with two members; "from" and "lives". 
+ * */
+ProfileTime.prototype.checkLocationTime = function(locations) {
+    my_log("reached checkLocationTime: " + locations); //TODO Remove log
+    my_log(locations.lives); //TODO Remove log
+    my_log(locations.from); //TODO Remove log
+    my_log(this);
+    if (locations.lives){
+        myHttpRequests.googleCurrentTime(locations.lives, this.processLocationTime, this);
+    } else if (locations.from) {
+        myHttpRequests.googleCurrentTime(locations.from, this.processLocationTime, this);
+    } else {
+        my_log("nothing available. =/") //TODO Remove log
     }
-}    
+};
+
+/** Processes the results of the location time search. 
+ * @this ProfileTime 
+ * @param {Object} results The results of the location time search. Typically of the form:
+ * { time: "H:MMpm/am", timezone: "(PDT)", day: "Monday", dayIndex: 1}
+ * */
+ProfileTime.prototype.processLocationTime = function(results) {
+   my_log("reached processLocationTime");
+   my_log("username still: " + this.username);
+    my_log(results);
+    var today = new Date();
+    var tDayIndex = today.getDay();
+    
+    var time = ""+results.time; 
+    var lHours = time.substring(0, time.indexOf(":"));
+    var lMinutes =  time.substr(time.indexOf(":")+1, 2);
+    
+    var minsDiff = lMinutes - today.getMinutes();
+     
+    
+    if (time.toLowerCase().contains("pm") && parseInt(lHours) < 12){
+        lHours = parseInt(lHours) + 12;
+    } else if (lHours == 12){
+        lHours = 0;
+    }
+    
+    //whether *my* time is a day ahead (+1), behind(-1) or the same (0).
+    var dayDifference = 0; 
+    if (tDayIndex == results.dayIndex ){
+    } else if ( tDayIndex > results.dayIndex || tDayIndex == 6 ){
+        dayDifference = 1;
+    } else if ( tDayIndex < results.dayIndex ||  results.dayIndex == 6){
+        dayDifference = -1;
+    }
+    
+    //-ve is behind, +ve is ahead.  
+    var hoursDiff =  (today.getHours() - lHours + 24*dayDifference)%24;
+    
+    if (lMinutes > 50 && !today.getMinutes() ){
+        //retrieved time is after 50, and the local time is on the hour
+        hoursDiff -= 1; //reduce by one hour.
+    }
+    //reduce to either 30 or 0
+    //minsDiff = Math.abs(minsDiff) > 20 ? 30 : 0;  
+    
+    
+    my_log("24 hr: "+  results.day + " "+ lHours + ":" + lMinutes + " " + results.timezone);
+    my_log("difference: " + hoursDiff +" hrs " + minsDiff +" minutes");
+};
+
+
+///////////////////////////////////////////////////////////////////////
+///// End ProfileTime
+///////////////////////////////////////////////////////////////////////
+
+
+///////////////////////////////////////////////////////////////////////
+///// Start pageMonitor
+///////////////////////////////////////////////////////////////////////    
+
 
 /* NOTE: 
  * -class="fbChatTab" defines the entire chat window 
@@ -309,74 +456,16 @@ pageMonitor = {
         
         //changes happened so we do things
         for(var i=0,j=checkedSet.length; i<j; i++){
-            myHttpRequests.facebookLocation(checkedSet[i].getAttribute("href"), pageMonitor.checkLocationTime);
+           // myHttpRequests.facebookLocation(checkedSet[i].getAttribute("href"), pageMonitor.checkLocationTime);
+           var time = new ProfileTime(checkedSet[i].getAttribute("href"));
+           time.getTime();
         
             my_log("checkedSet name: " + checkedSet[i].innerHTML +
                   "url: " + checkedSet[i].getAttribute("href")  ); //TODO Remove log
         };
         
     },
-    /** The action to perform once the fb check has completed. 
-     * @param {Object} locations Expecting an object/associative array with two members; "from" and "lives". 
-     * */
-    checkLocationTime:function(locations){
-        my_log("reached checkLocationTime: " + locations); //TODO Remove log
-        my_log(locations.lives); //TODO Remove log
-        my_log(locations.from); //TODO Remove log
-        if (locations.lives){
-            myHttpRequests.googleCurrentTime(locations.lives, pageMonitor.processLocationTime);
-        } else if (locations.from) {
-            myHttpRequests.googleCurrentTime(locations.from, pageMonitor.processLocationTime);
-        } else {
-            my_log("nothing available. =/") //TODO Remove log
-        }
-    },
-    /** Processes the results of the location time search. 
-     * @param {Object} results The results of the location time search. Typically of the form:
-     * { time: "H:MMpm/am", timezone: "(PDT)", day: "Monday", dayIndex: 1}
-     * */
-    processLocationTime:function(results){
-        my_log(results);
-        var today = new Date();
-        var tDayIndex = today.getDay();
-        
-        var time = ""+results.time; 
-        var lHours = time.substring(0, time.indexOf(":"));
-        var lMinutes =  time.substr(time.indexOf(":")+1, 2);
-        
-        var minsDiff = lMinutes - today.getMinutes();
-         
-        
-        if (time.toLowerCase().contains("pm") && parseInt(lHours) < 12){
-            lHours = parseInt(lHours) + 12;
-        } else if (lHours == 12){
-            lHours = 0;
-        }
-        
-        //whether *my* time is a day ahead (+1), behind(-1) or the same (0).
-        var dayDifference = 0; 
-        if (tDayIndex == results.dayIndex ){
-        } else if ( tDayIndex > results.dayIndex || tDayIndex == 6 ){
-            dayDifference = 1;
-        } else if ( tDayIndex < results.dayIndex ||  results.dayIndex == 6){
-            dayDifference = -1;
-        }
-        
-        //-ve is behind, +ve is ahead.  
-        var hoursDiff =  (today.getHours() - lHours + 24*dayDifference)%24;
-        
-        if (lMinutes > 50 && !today.getMinutes() ){
-            //retrieved time is after 50, and the local time is on the hour
-            hoursDiff -= 1; //reduce by one hour.
-        }
-        //reduce to either 30 or 0
-        //minsDiff = Math.abs(minsDiff) > 20 ? 30 : 0;  
-        
-        
-        my_log("24 hr: "+  results.day + " "+ lHours + ":" + lMinutes + " " + results.timezone);
-        my_log("difference: " + hoursDiff +" hrs " + minsDiff +" minutes")
-               
-    },
+    
     
     /** Starts the monitor. */ 
     start:function(){
@@ -391,11 +480,5 @@ pageMonitor = {
 }
 
 //start monitoring
-//pageMonitor.start();
-var key = "woooo246";
-var test = storage.getObject(key);
-if (test)
-my_log("store test:  " + test.testing + test.test2.nest);
-storage.setObject(key, {testing: "duck", test2: {nest: "duck2"} } );
-//storage.eraseStorage();
-my_log("completed");
+pageMonitor.start();
+
