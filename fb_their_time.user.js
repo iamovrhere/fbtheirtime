@@ -17,9 +17,9 @@ var DAYS_OF_WEEK = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Fri
 
 
 
-///////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// Start storage object
-///////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
 /** Reads and writes objects to storage. 
  * It is worth noting this cannot be inspected by cookie manager.
  * 
@@ -41,7 +41,6 @@ storage = {
             var obj = JSON.parse(value);
             obj[key] = object;
             value = JSON.stringify(obj);
-            my_log(value);
         } catch (e){
                 my_log("Error occurred: " + e );                                
         } 
@@ -67,22 +66,25 @@ storage = {
 }
 
 
-///////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// End storage
-///////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-///////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// Start myHttpRequests object
-///////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /** Handles httpRequests to facebook and google. 
  * @version 0.3.0 */
 myHttpRequests = {
-    /** The class used to contain "about me" summaries on the front page. */
+    /** The Facebook class used to contain "about me" summaries on the front page. */
     aboutClass: '_4_ug',
-    /** The query stub to determine a location's time. */
+    /** The Goggle query stub to determine a location's time. */
     googleQueryStub: 'current time in ', 
+    /** The Google container class to find the time-answer in. 
+     * If this does not exists the answer is not simple. */
+    containerClass: 'obcontainer',
     
     /** 
      * Gathers the location from the DOM. 
@@ -108,6 +110,7 @@ myHttpRequests = {
         my_log(livesIn+fromLoc)
         return { lives: livesIn, from: fromLoc };
     },
+    
     /** Facebook likes to pass around code with sections commented out. 
      * Let's strip those comment tags. 
      * @param {String} htmlText The html text to strip comments from. */
@@ -118,12 +121,13 @@ myHttpRequests = {
         
         return htmlText;
     },
+    
     /** 
      * Parses facebook's page, strips the comments and exracts the location data.
      * @param {String} dest The facebook profile to GET. 
      * @param {Function} callback The action to perform on load.
      * Expects one parameter: Object/Associative array. Where the members are:
-     * lives: "Lives in String", from: "From String".
+     * {lives: "Lives in String", from: "From String" }.
      * @param {Object} callbackContext (Optional). The context to perform the callback in 
      * (important for chaining).  
      *  
@@ -150,14 +154,14 @@ myHttpRequests = {
                 }
                 
                 var locs = myHttpRequests.fbLocationFromDOM(responseXML.documentElement);
-                my_log("tried "+dest); //TODO remove log
-                if (callbackContext){                    
-                    my_log("context "+callbackContext.toString()); //TODO remove log
+               
+                if (callbackContext){    
                     callback.call(callbackContext, locs);
                 } else
-                  callback(locs);    
-                
-                  
+                  callback(locs);
+                 
+                my_log("fb check exiting... "); //TODO remove log
+                   
             },
         
             onprogress:function(response){
@@ -196,12 +200,11 @@ myHttpRequests = {
           onload: function(response) {
               var responseXML; 
                 if (!response.responseXML) {
-                    my_log("parsing...");     //TODO Remove log
                     responseXML = new DOMParser().parseFromString(response.responseText, "text/html"); 
                 } else {
                     responseXML = response.responseXML;
                 }
-                var answer = responseXML.documentElement.getElementsByClassName('obcontainer');
+                var answer = responseXML.documentElement.getElementsByClassName(myHttpRequests.containerClass);
                 if (answer && answer.length){                
                     var table = answer[0].getElementsByTagName('table'); //check first item
                     if (table && table.length){
@@ -228,20 +231,17 @@ myHttpRequests = {
                               break;
                           }                            
                         };                                        
-                        my_log("table "+i+" : "+inner); //TODO Remove log
-                        my_log(callback) //TODO remove log
-                        
                     }
                 } else {
                     result= "No answer found.";                    
                 }
                 
                 if (callbackContext){
-                    my_log("context "+callbackContext.toString); //TODO remove log                    
                     callback.call(callbackContext, result);                    
                 } else
                   callback(result);    
-                
+                  
+               my_log("Google search exiting..."); //TODO Remove log 
             },
         
             onprogress:function(response){
@@ -257,29 +257,47 @@ myHttpRequests = {
     foo:function(){}
 }
 
-///////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// End myHttpRequests
-///////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-///////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// Start ProfileTime object
-///////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /** Creates a profile time object. 
  * This will first attempt to fetches the time difference from the cookies. 
  * If it cannot it will attempt to fetch via HttpRequests. Once the time difference is acquired
  * the resulting time difference will be returned. 
- * @version 0.1.0
+ * @version 0.2.0
  * @this ProfileTime
  * @param {String} profileUrl The facebook profile to check time of. */
 function ProfileTime(profileUrl){
     var searchString = ".com/"
     var start = profileUrl.indexOf(searchString) + searchString.length;
     
+    /** The facebook profile url. */
     this.url = profileUrl;
+    /** The username for this profile account. Used as storage key. */
     this.username = profileUrl.substring(start); 
-    this.myself = this;
+    
+    
+    
+    /** How long is a stored date valid for. 
+     * Note: 86400000 milliseconds in a day. */
+    var expirationThreshold = 60000; //60 seconds 
+    //30000; //30 seconds //300000; //5 minutes //604800000; //7 days
+    
+    /** This is the object that is placed/retrieved in/from storage. */
+    this.timeStatus = {hoursDiff: null, expires: null, timezone: null, lastLocation: null };
+    /** Set the expiration time for timeStatus. */ 
+    this.setExpirationTime = function(){ this.timeStatus.expires= (new Date()).getTime() + expirationThreshold; }        
+    
+    /** Returns the current time from 1970 in milliseconds. */ 
+    this.getCurrentAbsTime = function(){ return (new Date()).getTime(); }
+    /** The callback to send back the time. */
+    this.getTimeCallback = function(){};
     my_log(this.username);
 }
 
@@ -288,33 +306,101 @@ ProfileTime.prototype.toString = function() {
   return "ProfileTime";
 };
 
-
-
-/** Attempts to get the time by checking the cookies and parsing the time difference. 
- * If the difference is not available or too old, it is gathered from their profile page. 
- * @this ProfileTime */
-ProfileTime.prototype.getTime = function() {
-    myHttpRequests.facebookLocation(this.url, this.checkLocationTime, this);
+//Step 4: Finish
+/** The action to perform once the time attributes have been gathered. 
+ * Currently commits the timeStatus to storage and calls the call back. */
+ProfileTime.prototype.timeStatusAcquired = function() {
+    //commit attributes
+    storage.setObject(this.username, this.timeStatus);
+    //TODO remove log
+    my_log("store valid: timeStatus: " + 
+            this.timeStatus.expires + " " + this.timeStatus.hoursDiff 
+            + " " + this.timeStatus.timezone + " " + this.timeStatus.lastLocation);
+    this.getTimeCallback();
 };
 
+//Step 1: Start
+/** Attempts to get the time by checking the cookies and parsing the time difference. 
+ * If the difference is not available or too old, it is gathered from their profile page. 
+ * @this ProfileTime 
+ * @param {Function} callback (Optional). As the time gathering may or may not be asynchronous,
+ * We do a callback to get the time. */
+ProfileTime.prototype.getTime = function(callback) {
+    if (callback){
+        this.getTimeCallback = callback;
+    }
+    
+    //Check to see if there's a store for this user.        
+    var userStore = storage.getObject(this.username);
+    if (userStore){
+        this.timeStatus = userStore;
+    }    
+    
+    if (userStore && this.checkIfTimeValid()){
+        this.timeStatusAcquired();        
+    } else {    
+        myHttpRequests.facebookLocation(this.url, this.checkLocationTime, this);
+    }    
+};
+
+
+/** Returns whether or not the the last retrieval was within the expirationThreshold. 
+ * @return <code>true</code> if the time is still valid, 
+ * <code>false</code> if expired. */
+ProfileTime.prototype.checkIfTimeValid = function(){
+    if (this.timeStatus){
+        var expire = this.timeStatus.expires;
+        var today = this.getCurrentAbsTime();
+        my_log("today: " + this.getCurrentAbsTime() + "  expires: "+ this.timeStatus.expires  ); //TODO remove log
+        return ( this.getCurrentAbsTime() < this.timeStatus.expires );            
+    }    
+    return false;
+}
+
+
+/** Returns if the location is the same as the stored location. 
+ * @param {String} location The location to compare.
+ * @return <code>true</code> if the location is the same. */  
+ProfileTime.prototype.isSameLocation = function(location) {
+    return this.timeStatus.lastLocation && 
+            this.timeStatus.lastLocation == location;
+}
+
+//Step 2:
 /** The action to perform once the fb check has completed. 
  * @this ProfileTime
  * @param {Object} locations Expecting an object/associative array with two members; "from" and "lives". 
  * */
 ProfileTime.prototype.checkLocationTime = function(locations) {
     my_log("reached checkLocationTime: " + locations); //TODO Remove log
-    my_log(locations.lives); //TODO Remove log
-    my_log(locations.from); //TODO Remove log
-    my_log(this);
-    if (locations.lives){
-        myHttpRequests.googleCurrentTime(locations.lives, this.processLocationTime, this);
-    } else if (locations.from) {
-        myHttpRequests.googleCurrentTime(locations.from, this.processLocationTime, this);
+    var lives = locations.lives;
+    var from = locations.from;
+    my_log(lives); //TODO Remove log
+    my_log(from); //TODO Remove log
+    
+    if (lives){
+        if (this.isSameLocation(lives)){
+            this.setExpirationTime();
+            this.timeStatusAcquired();     
+        } else {
+            this.timeStatus.lastLocation = lives;
+            myHttpRequests.googleCurrentTime(lives, this.processLocationTime, this);
+        }
+    } else if (from) {
+        if (this.isSameLocation(lives)){
+            this.setExpirationTime();
+            this.timeStatusAcquired();     
+        } else {
+            this.timeStatus.lastLocation = from;
+            myHttpRequests.googleCurrentTime(from, this.processLocationTime, this);
+        }
     } else {
+        this.getTimeCallback("Unknown.")        
         my_log("nothing available. =/") //TODO Remove log
     }
 };
 
+//Step 3:
 /** Processes the results of the location time search. 
  * @this ProfileTime 
  * @param {Object} results The results of the location time search. Typically of the form:
@@ -358,21 +444,25 @@ ProfileTime.prototype.processLocationTime = function(results) {
     }
     //reduce to either 30 or 0
     //minsDiff = Math.abs(minsDiff) > 20 ? 30 : 0;  
-    
+    this.timeStatus.hoursDiff = hoursDiff;
+    this.timeStatus.timezone  = results.timezone;
+    this.setExpirationTime();
+    //this.timeStatus.lastLocation //set in checkLocationTime    
     
     my_log("24 hr: "+  results.day + " "+ lHours + ":" + lMinutes + " " + results.timezone);
     my_log("difference: " + hoursDiff +" hrs " + minsDiff +" minutes");
+    this.timeStatusAcquired();
 };
 
 
-///////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// End ProfileTime
-///////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-///////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// Start pageMonitor
-///////////////////////////////////////////////////////////////////////    
+///////////////////////////////////////////////////////////////////////////////////////////////////////////    
 
 
 /* NOTE: 
