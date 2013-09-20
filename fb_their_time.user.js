@@ -267,10 +267,12 @@ myHttpRequests = {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /** Creates a profile time object. 
- * This will first attempt to fetches the time difference from the cookies. 
- * If it cannot it will attempt to fetch via HttpRequests. Once the time difference is acquired
- * the resulting time difference will be returned. 
- * @version 0.2.0
+ * To start the function getTime(callback) must be called.
+ * It first attempts to fetch the time difference from localStorage. 
+ * If it cannot determine it from localStorage (or the values have expired) 
+ * it will attempt to fetch via HttpRequests. Once the time difference is acquired
+ * the resulting time difference will be returned via the callback.
+ * @version 0.2.1
  * @this ProfileTime
  * @param {String} profileUrl The facebook profile to check time of. */
 function ProfileTime(profileUrl){
@@ -465,6 +467,54 @@ ProfileTime.prototype.processLocationTime = function(results) {
 ///// End ProfileTime
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///// Start TimeToolTip object
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/** Creates a time tooltip to display time.
+ * The initial state of the tool tip is to display: 
+ * 
+ * The time is acquired via ProfileTime.
+ * 
+ * @version 0.1.0
+ * @this ProfileTime
+ * @param {Element} nameLink The DOM object with their profile link and name. */
+function TimeToolTip(nameLink){
+    var url = nameLink.getAttribute("href");
+    var name = "" + nameLink.innerHTML;
+    //To say "Bob's time: "
+    var firstNamePossessive = name.substring(0, name.indexOf(" ")); 
+    if (firstNamePossessive.indexOf("s") == firstNamePossessive.length -1){
+        firstNamePossessive += "'"; // Jess' time
+    } else {
+        firstNamePossessive += "'s" //Bob's time
+    }
+    document.of
+    var colour = "red";
+    var toopTipStyle =  "border: 10px "+colour+" solid;" + 
+                        "border-radius: 10px; background:"+ colour +"; font: white;"
+    var timeStyle = "font-style: italic;"
+    var bottomTriangleStyle =   "border-left: 10px transparent solid; "+
+                                "border-right: 10px transparent solid; "+
+                                "border-top: 10px "+colour+" solid; width: 0px;"
+     
+    var toolTip = document.createElement("div");
+        toolTip.setAttribute("style", toopTipStyle)
+        toolTip.innerHTML = firstNamePossessive + " time:"
+        //TODO add tooltip triangle
+    var timeElement = document.createElement("span");
+        timeElement.setAttribute("style", timeStyle)
+        
+        timeElement.innerHTML = "Loading..."
+        
+        toolTip.appendChild(timeElement);
+    
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///// End TimeToolTip
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// Start pageMonitor
