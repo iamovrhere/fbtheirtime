@@ -28,7 +28,7 @@ storage = {
     /** The name of our localStore for encapsulation purposes. */
     id: 'fb_their_time_script',
     /** Erases all storage. */
-    eraseStorage:function(){localStorage.removeItem(storage.id); },
+    eraseStorage:function(){localStorage.removeItem(storage.id); my_log("Erased");},
     /** Stores object to local storage.  
      * @param {String} key The key in the localStorage item.
      * @param {Object} object  The object to be stored.  */
@@ -387,7 +387,7 @@ ProfileTime.prototype.checkLocationTime = function(locations) {
             myHttpRequests.googleCurrentTime(lives, this.processLocationTime, this);
         }
     } else if (from) {
-        if (this.isSameLocation(lives)){
+        if (this.isSameLocation(from)){
             this.setExpirationTime();
             this.timeStatusAcquired();     
         } else {
@@ -395,8 +395,8 @@ ProfileTime.prototype.checkLocationTime = function(locations) {
             myHttpRequests.googleCurrentTime(from, this.processLocationTime, this);
         }
     } else {
-        this.getTimeCallback("Unknown.")        
-        my_log("nothing available. =/") //TODO Remove log
+        this.getTimeCallback("Location Unknown.");        
+        my_log("Location Unknown.") //TODO Remove log
     }
 };
 
@@ -404,12 +404,18 @@ ProfileTime.prototype.checkLocationTime = function(locations) {
 /** Processes the results of the location time search. 
  * @this ProfileTime 
  * @param {Object} results The results of the location time search. Typically of the form:
- * { time: "H:MMpm/am", timezone: "(PDT)", day: "Monday", dayIndex: 1}
+ * { time: "H:MMpm/am", timezone: "(PDT)", day: "Monday", dayIndex: 1}. 
+ * @param {String} results This indicates there was no time available.  
  * */
 ProfileTime.prototype.processLocationTime = function(results) {
+   if (!(results instanceof Object) || !results.time ){
+       this.getTimeCallback("Time Unknown.");
+       my_log("Time Unknown.") //TODO Remove log
+       return;
+   }
    my_log("reached processLocationTime");
    my_log("username still: " + this.username);
-    my_log(results);
+    my_log(results);    
     var today = new Date();
     var tDayIndex = today.getDay();
     
@@ -571,4 +577,4 @@ pageMonitor = {
 
 //start monitoring
 pageMonitor.start();
-
+//storage.eraseStorage();
