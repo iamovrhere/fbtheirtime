@@ -45,7 +45,7 @@ storage = {
     /** Erases all storage. */
     eraseStorage:function(){
         localStorage.removeItem(storage.id); 
-        my_log("Erased");
+        my_log("storage: Erased");
     },
     /** Stores object to local storage.  
      * @param {String} key The key in the localStorage item.
@@ -60,7 +60,7 @@ storage = {
             obj[key] = object;
             value = JSON.stringify(obj);
         } catch (e){
-                my_log("Error occurred: " + e );                                
+                my_log("storage: Error occurred: " + e );                                
         } 
         localStorage.setItem(storage.id, value );
     },
@@ -75,7 +75,7 @@ storage = {
                 var obj = JSON.parse (value);
                 return obj[key];
             } catch (e){
-                my_log("Error occurred: " + e);
+                my_log("storage: Error occurred: " + e);
                 return null;                
             }
         }
@@ -94,7 +94,7 @@ storage = {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /** Handles httpRequests to facebook and google. 
- * @version 0.4.0 */
+ * @version 0.5.0 */
 myHttpRequests = {
     /** The Facebook class used to contain "about me" summaries on the front page. */
     aboutClass: '_4_ug',
@@ -186,8 +186,8 @@ myHttpRequests = {
                 my_log("loading...", true); /** @TODO remove log */
             },
             onerror: function(response){
-                callback.onFailure.call(callback, locs);
                 my_log("error!"); /** @TODO remove log */
+                callback.onFailure.call(callback);
             }
         }
         );        
@@ -197,16 +197,17 @@ myHttpRequests = {
      * Attempts to google the location to get the current time there.
      * 
      * @param {String} location The location to search and check the time of.
-     * @param {Function} callback The action to perform on load. 
+     * @param {BinaryCallback} callback Contains the functions to call on
+     * success or failure. 
+     * <br/>On success: 
      * Will pass parameter {Object} of the form:
      * { time: "H:MMpm/am", timezone: "(PDT)", day: "Monday", dayIndex: 1 }, 
      * where the default values are blank strings. 
-     * If no answer can be found it will pass the string: "No answer found."
-     * @param {Object} callbackContext (Optional). The context to perform the callback in
-     * (important for chaining).
+     * May also pass a string if there are no results.
+     * <br/>On failure; failure is called.
      *   
      * */
-    googleCurrentTime:function(location, callback, callbackContext) {
+    googleCurrentTime:function(location, callback) {
         var dest = "http://www.google.com/search?q=" +myHttpRequests.googleQueryStub + location;
         
         GM_xmlhttpRequest({
@@ -223,12 +224,15 @@ myHttpRequests = {
                 } else {
                     responseXML = response.responseXML;
                 }
-                var answer = responseXML.documentElement.getElementsByClassName(myHttpRequests.containerClass);
+                var answer = responseXML.documentElement
+                                        .getElementsByClassName(myHttpRequests.containerClass);
+                var result = new Object();
+                
                 if (answer && answer.length){                
                     var table = answer[0].getElementsByTagName('table'); //check first item
                     if (table && table.length){
                         var inner = "" + table[0].getElementsByTagName('td')[0].innerHTML;
-                        var result = new Object();
+                        
                         result['time'] = "";
                         result['timezone'] = "";
                         result['day'] = "";
@@ -242,7 +246,8 @@ myHttpRequests = {
                         
                         for(var i=0,j=DAYS_OF_WEEK.length; i<j; i++){
                             var index = inner.indexOf(DAYS_OF_WEEK[i]);
-                            //Checks to see if it not only exists but that it refers to the day not the location.
+                            //Checks to see if it not only exists but that it refers 
+                            //to the day not the location.
                               
                             if (index > 0 && index < inner.length/2 ){                               
                               result['day'] = DAYS_OF_WEEK[i];
@@ -255,13 +260,9 @@ myHttpRequests = {
                     result= "No answer found.";                    
                 }
                 
-                if (callbackContext){
-                    callback.call(callbackContext, result);                    
-                } else {
-                  callback(result);    
-                }
+                callback.onSuccess.call(callback, result);                    
                   
-               my_log("Google search exiting...");
+                my_log("Google search exiting...");
             },
         
             onprogress:function(response){
@@ -269,6 +270,7 @@ myHttpRequests = {
             },
             onerror: function(response){
                 my_log("error!"); /** @TODO remove log */
+                callback.onFailure.call(callback);                    
             }
         }
         ); 
@@ -334,7 +336,7 @@ BinaryCallback.prototype.onFailure = function(param) {
  * If it cannot determine it from localStorage (or the values have expired) 
  * it will attempt to fetch via HttpRequests. Once the time difference is acquired
  * the resulting time difference will be returned via the callback.
- * @version 0.2.2
+ * @version 0.2.3
  * @this ProfileTime
  * @param {String} profileUrl The facebook profile to check time of. */
 function ProfileTime(profileUrl){
@@ -357,6 +359,11 @@ function ProfileTime(profileUrl){
                 this, 
                 this.checkLocationTime, 
                 function(){this.onFailure("'Facbook location check' failed");});
+    this.locationTimeCallback = 
+            new BinaryCallback(
+                this, 
+                this.processLocationTime, 
+                function(){this.onFailure("'Location time check' failed");});                
     
     /** This is the object that is placed/retrieved in/from storage. */
     this.timeStatus = {hoursDiff: null, expires: null, timezone: null, lastLocation: null };
@@ -391,7 +398,7 @@ ProfileTime.prototype.timeStatusAcquired = function() {
     //commit attributes
     storage.setObject(this.username, this.timeStatus);
     
-    my_log("store valid: timeStatus: " + 
+    my_log("ProfileTime: store valid: timeStatus: " + 
             this.timeStatus.expires + " " + this.timeStatus.hoursDiff 
             + " " + this.timeStatus.timezone + " " + this.timeStatus.lastLocation,
             true);
@@ -403,7 +410,7 @@ ProfileTime.prototype.timeStatusAcquired = function() {
  * If the difference is not available or too old, it is gathered from their profile page. 
  * @this ProfileTime 
  * @param {Function} callback (Optional). As the time gathering may or may not be asynchronous,
- * We do a callback to get the time. Expects string as parameter. */
+ * We do a callback to get the time. Callback expects string as parameter. */
 ProfileTime.prototype.getTime = function(callback) {
     if (callback){
         this.getTimeCallback = callback;
@@ -431,7 +438,7 @@ ProfileTime.prototype.checkIfTimeValid = function(){
         var expire = this.timeStatus.expires;
         var today = this.getCurrentAbsTime();
         /** @TODO remove log */
-        my_log("today: " + this.getCurrentAbsTime() + "  expires: "+ this.timeStatus.expires  ); 
+        my_log("ProfileTime: today: " + this.getCurrentAbsTime() + "  expires: "+ this.timeStatus.expires  ); 
         return ( this.getCurrentAbsTime() < this.timeStatus.expires );            
     }    
     return false;
@@ -452,7 +459,7 @@ ProfileTime.prototype.isSameLocation = function(location) {
  * @param {Object} locations Expecting an object/associative array with two members; "from" and "lives". 
  * */
 ProfileTime.prototype.checkLocationTime = function(locations) {
-    my_log("reached checkLocationTime: " + locations);
+    my_log("ProfileTime: reached checkLocationTime: " + locations);
     var lives = locations.lives;
     var from = locations.from;
     my_log(lives, true);
@@ -464,7 +471,7 @@ ProfileTime.prototype.checkLocationTime = function(locations) {
             this.timeStatusAcquired();     
         } else {
             this.timeStatus.lastLocation = lives;
-            myHttpRequests.googleCurrentTime(lives, this.processLocationTime, this);
+            myHttpRequests.googleCurrentTime(lives, this.locationTimeCallback);
         }
     } else if (from) {
         if (this.isSameLocation(from)){
@@ -472,11 +479,11 @@ ProfileTime.prototype.checkLocationTime = function(locations) {
             this.timeStatusAcquired();     
         } else {
             this.timeStatus.lastLocation = from;
-            myHttpRequests.googleCurrentTime(from, this.processLocationTime, this);
+            myHttpRequests.googleCurrentTime(from, this.locationTimeCallback);
         }
     } else {
         this.getTimeCallback("Location Unknown.");        
-        my_log("Location Unknown."); /** @TODO remove log */
+        my_log("ProfileTime: Location Unknown."); /** @TODO remove log */
     }
 };
 
@@ -490,26 +497,29 @@ ProfileTime.prototype.checkLocationTime = function(locations) {
 ProfileTime.prototype.processLocationTime = function(results) {
     if (!(results instanceof Object) || !results.time ){
         this.getTimeCallback("Time Unknown.");
-        my_log("Time Unknown."); /** @TODO remove log */
+        my_log("ProfileTime: Time Unknown."); /** @TODO remove log */
         return ;
     }
-    my_log("reached processLocationTime");
-    my_log("username still: " + this.username);
-    my_log(results);    
+    my_log("ProfileTime: reached processLocationTime");
+    my_log("username still: " + this.username, true);
+    my_log(results, true);    
+    
     var today = new Date();
     var tDayIndex = today.getDay();
     
+    //my time.
     var time = ""+results.time; 
-    //Local hours & minutes.
-    var lHours = time.substring(0, time.indexOf(":"));
-    var lMinutes =  time.substr(time.indexOf(":")+1, 2);
-    
-    var minsDiff = lMinutes - today.getMinutes();
+    //Their hours & minutes.
+    var theirHours = time.substring(0, time.indexOf(":"));
+    var theirMinutes =  time.substr(time.indexOf(":")+1, 2);
+    //minutes difference
+    var minsDiff = theirMinutes - today.getMinutes();
          
-    if (time.toLowerCase().contains("pm") && parseInt(lHours) < 12){
-        lHours = parseInt(lHours) + 12;
-    } else if (lHours === 12){
-        lHours = 0;
+    //Convert to 24 time.
+    if (time.toLowerCase().contains("pm") && parseInt(theirHours) < 12){
+        theirHours = parseInt(theirHours) + 12;
+    } else if (theirHours === 12){
+        theirHours = 0;
     }
     
     //whether *my* time is a day ahead (+1), behind(-1) or the same (0).
@@ -522,11 +532,11 @@ ProfileTime.prototype.processLocationTime = function(results) {
     }
     
     //-ve is behind, +ve is ahead.  
-    var hoursDiff =  (today.getHours() - lHours + 24*dayDifference)%24;
+    var hoursDiff =  (today.getHours() - theirHours + 24*dayDifference)%24;
     
-    if (lMinutes > 50 && !today.getMinutes() ){
-        //retrieved time is after 50, and the local time is on the hour
-        hoursDiff -= 1; //reduce by one hour.
+    if (theirMinutes > 55 && !today.getMinutes() ){
+        //retrieved time is after 55, and the local time is on the hour
+        hoursDiff -= 1; //reduce by one hour, as they are at xx:59
     }
     //reduce to either 30 or 0
     //minsDiff = Math.abs(minsDiff) > 20 ? 30 : 0;  
@@ -535,7 +545,7 @@ ProfileTime.prototype.processLocationTime = function(results) {
     this.setExpirationTime();
     //this.timeStatus.lastLocation //set in checkLocationTime    
     
-    my_log("24 hr: "+  results.day + " "+ lHours + ":" + lMinutes + " " + results.timezone);
+    my_log("24 hr: "+  results.day + " "+ theirHours + ":" + theirMinutes + " " + results.timezone);
     my_log("difference: " + hoursDiff +" hrs " + minsDiff +" minutes");
     this.timeStatusAcquired();
 };
@@ -605,7 +615,8 @@ function TimeToolTip(nameLink){
  * in chat windows.
  */ 
  
-/** Responsible for checking the page for changes and attaching events.
+/** Singleton.
+ * Responsible for checking the page for changes and attaching events.
  * @version 0.2.0 */
 pageMonitor = {
     /** Check frequency in milliseconds. */
@@ -662,14 +673,14 @@ pageMonitor = {
             var changed = checkedSet.length !== pageMonitor.chatSet.length ? true : false;
             for(var i=0,j=checkedSet.length; i<j; i++){               
               if ( checkedSet[i] !== pageMonitor.chatSet[i] ){
-                  my_log("different item at "+ i); /** @TODO remove log */
+                  my_log("different item at "+ i, true);
                   changed=true;
               }
             };
             //if changed, we recopy and continue.
             if (changed){
                 pageMonitor.chatSet = [].slice.call(checkedSet);
-                my_log("new set!");           /** @TODO remove log */
+                my_log("new set!", true);        
             } else { //nothing has changed.
                 pageMonitor.isCheckingChats = false;
                 return;
