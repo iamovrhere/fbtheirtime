@@ -5,14 +5,19 @@
 // @description Provides a simple tool tip to display a contacts current time.
 // @include     https://www.facebook.com/*
 // @include     http://www.facebook.com/*
-// @version     0.1.1
+// @version     0.1.2
 // ==/UserScript==
 
+var DEBUGGING = true;
 
+/** Convience function for debugging. */
  my_log = function (arg) { 
-     unsafeWindow.console.log(arg); 
-}
+     if (DEBUGGING){
+       unsafeWindow.console.log(arg); 
+    }
+};
 
+/** Days of the week, ordered: Sunday is [0]. */
 var DAYS_OF_WEEK = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 
@@ -28,7 +33,10 @@ storage = {
     /** The name of our localStore for encapsulation purposes. */
     id: 'fb_their_time_script',
     /** Erases all storage. */
-    eraseStorage:function(){localStorage.removeItem(storage.id); my_log("Erased");},
+    eraseStorage:function(){
+        localStorage.removeItem(storage.id); 
+        my_log("Erased");
+    },
     /** Stores object to local storage.  
      * @param {String} key The key in the localStorage item.
      * @param {Object} object  The object to be stored.  */
@@ -63,7 +71,7 @@ storage = {
         }
        return null;
     }
-}
+};
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -80,7 +88,7 @@ storage = {
 myHttpRequests = {
     /** The Facebook class used to contain "about me" summaries on the front page. */
     aboutClass: '_4_ug',
-    /** The Goggle query stub to determine a location's time. */
+    /** The Google query stub to determine a location's time. */
     googleQueryStub: 'current time in ', 
     /** The Google container class to find the time-answer in. 
      * If this does not exists the answer is not simple. */
@@ -97,17 +105,18 @@ myHttpRequests = {
         var livesIn = ""; 
         var fromLoc = "";
         
-        my_log("aboutPerson: " + aboutPerson + " " + aboutPerson.length); //TODO remove log
+        /** @TODO remove log */
+        my_log("aboutPerson: " + aboutPerson + " " + aboutPerson.length); 
         
         for (var i = aboutPerson.length - 1; i >= 0; i--){
-          var string = ""+aboutPerson[i].innerHTML
+          var string = ""+aboutPerson[i].innerHTML;
           if (string.contains("Lives in", 0)){
             livesIn = aboutPerson[i].getElementsByTagName('a')[0].innerHTML;
           } else if (string.contains("From", 0)){
               fromLoc = aboutPerson[i].getElementsByTagName('a')[0].innerHTML;
           }
         };
-        my_log(livesIn+fromLoc)
+        my_log(livesIn+fromLoc);
         return { lives: livesIn, from: fromLoc };
     },
     
@@ -116,9 +125,8 @@ myHttpRequests = {
      * @param {String} htmlText The html text to strip comments from. */
     stripCommentTags:function(htmlText){
         htmlText = htmlText.replace(/\<\!\-\-/gi, "");
-        htmlText = htmlText.replace(/\-\-\>/gi, "");
+        htmlText = htmlText.replace(/\-\-\>/gi, "");        
         //my_log(htmlText);
-        
         return htmlText;
     },
     
@@ -133,7 +141,9 @@ myHttpRequests = {
      *  
      * */
     facebookLocation:function(dest, callback, callbackContext) {
-        my_log("trying "+dest); //TODO remove log
+        /** @TODO remove log */
+        my_log("trying "+dest); 
+        
         GM_xmlhttpRequest({
           method: "GET",
           url: dest,
@@ -160,15 +170,16 @@ myHttpRequests = {
                 } else
                   callback(locs);
                  
-                my_log("fb check exiting... "); //TODO remove log
+                /** @TODO remove log */ 
+                my_log("fb check exiting... "); 
                    
             },
-        
+            
             onprogress:function(response){
-                my_log("loading..."); //TODO remove log
+                my_log("loading..."); /** @TODO remove log */
             },
             onerror: function(response){
-                my_log("error!"); //TODO remove log
+                my_log("error!"); /** @TODO remove log */
             }
         }
         );        
@@ -241,21 +252,21 @@ myHttpRequests = {
                 } else
                   callback(result);    
                   
-               my_log("Google search exiting..."); //TODO Remove log 
+               my_log("Google search exiting..."); /** @TODO remove log */
             },
         
             onprogress:function(response){
-                my_log("loading..."); //TODO Remove log
+                my_log("loading..."); /** @TODO remove log */
             },
             onerror: function(response){
-                my_log("error!"); //TODO Remove log
+                my_log("error!"); /** @TODO remove log */
             }
         }
         ); 
     },
     
     foo:function(){}
-}
+};
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// End myHttpRequests
@@ -276,7 +287,7 @@ myHttpRequests = {
  * @this ProfileTime
  * @param {String} profileUrl The facebook profile to check time of. */
 function ProfileTime(profileUrl){
-    var searchString = ".com/"
+    var searchString = ".com/";
     var start = profileUrl.indexOf(searchString) + searchString.length;
     
     /** The facebook profile url. */
@@ -297,7 +308,7 @@ function ProfileTime(profileUrl){
     this.setExpirationTime = function(){ this.timeStatus.expires= (new Date()).getTime() + expirationThreshold; }        
     
     /** Returns the current time from 1970 in milliseconds. */ 
-    this.getCurrentAbsTime = function(){ return (new Date()).getTime(); }
+    this.getCurrentAbsTime = function(){ return (new Date()).getTime(); };
     /** The callback to send back the time. */
     this.getTimeCallback = function(){};
     my_log(this.username);
@@ -314,7 +325,7 @@ ProfileTime.prototype.toString = function() {
 ProfileTime.prototype.timeStatusAcquired = function() {
     //commit attributes
     storage.setObject(this.username, this.timeStatus);
-    //TODO remove log
+    /** @TODO remove log */
     my_log("store valid: timeStatus: " + 
             this.timeStatus.expires + " " + this.timeStatus.hoursDiff 
             + " " + this.timeStatus.timezone + " " + this.timeStatus.lastLocation);
@@ -353,11 +364,12 @@ ProfileTime.prototype.checkIfTimeValid = function(){
     if (this.timeStatus){
         var expire = this.timeStatus.expires;
         var today = this.getCurrentAbsTime();
-        my_log("today: " + this.getCurrentAbsTime() + "  expires: "+ this.timeStatus.expires  ); //TODO remove log
+        /** @TODO remove log */
+        my_log("today: " + this.getCurrentAbsTime() + "  expires: "+ this.timeStatus.expires  ); 
         return ( this.getCurrentAbsTime() < this.timeStatus.expires );            
     }    
     return false;
-}
+};
 
 
 /** Returns if the location is the same as the stored location. 
@@ -365,8 +377,8 @@ ProfileTime.prototype.checkIfTimeValid = function(){
  * @return <code>true</code> if the location is the same. */  
 ProfileTime.prototype.isSameLocation = function(location) {
     return this.timeStatus.lastLocation && 
-            this.timeStatus.lastLocation == location;
-}
+            this.timeStatus.lastLocation === location;
+};
 
 //Step 2:
 /** The action to perform once the fb check has completed. 
@@ -374,11 +386,11 @@ ProfileTime.prototype.isSameLocation = function(location) {
  * @param {Object} locations Expecting an object/associative array with two members; "from" and "lives". 
  * */
 ProfileTime.prototype.checkLocationTime = function(locations) {
-    my_log("reached checkLocationTime: " + locations); //TODO Remove log
+    my_log("reached checkLocationTime: " + locations); /** @TODO remove log */
     var lives = locations.lives;
     var from = locations.from;
-    my_log(lives); //TODO Remove log
-    my_log(from); //TODO Remove log
+    my_log(lives); /** @TODO remove log */
+    my_log(from); /** @TODO remove log */
     
     if (lives){
         if (this.isSameLocation(lives)){
@@ -398,7 +410,7 @@ ProfileTime.prototype.checkLocationTime = function(locations) {
         }
     } else {
         this.getTimeCallback("Location Unknown.");        
-        my_log("Location Unknown.") //TODO Remove log
+        my_log("Location Unknown."); /** @TODO remove log */
     }
 };
 
@@ -410,36 +422,36 @@ ProfileTime.prototype.checkLocationTime = function(locations) {
  * @param {String} results This indicates there was no time available.  
  * */
 ProfileTime.prototype.processLocationTime = function(results) {
-   if (!(results instanceof Object) || !results.time ){
-       this.getTimeCallback("Time Unknown.");
-       my_log("Time Unknown.") //TODO Remove log
-       return;
-   }
-   my_log("reached processLocationTime");
-   my_log("username still: " + this.username);
+    if (!(results instanceof Object) || !results.time ){
+        this.getTimeCallback("Time Unknown.");
+        my_log("Time Unknown."); /** @TODO remove log */
+        return ;
+    }
+    my_log("reached processLocationTime");
+    my_log("username still: " + this.username);
     my_log(results);    
     var today = new Date();
     var tDayIndex = today.getDay();
     
     var time = ""+results.time; 
+    //Local hours & minutes.
     var lHours = time.substring(0, time.indexOf(":"));
     var lMinutes =  time.substr(time.indexOf(":")+1, 2);
     
     var minsDiff = lMinutes - today.getMinutes();
-     
-    
+         
     if (time.toLowerCase().contains("pm") && parseInt(lHours) < 12){
         lHours = parseInt(lHours) + 12;
-    } else if (lHours == 12){
+    } else if (lHours === 12){
         lHours = 0;
     }
     
     //whether *my* time is a day ahead (+1), behind(-1) or the same (0).
     var dayDifference = 0; 
-    if (tDayIndex == results.dayIndex ){
-    } else if ( tDayIndex > results.dayIndex || tDayIndex == 6 ){
+    if (tDayIndex === results.dayIndex ){
+    } else if ( tDayIndex > results.dayIndex || tDayIndex === 6 ){
         dayDifference = 1;
-    } else if ( tDayIndex < results.dayIndex ||  results.dayIndex == 6){
+    } else if ( tDayIndex < results.dayIndex ||  results.dayIndex === 6){
         dayDifference = -1;
     }
     
@@ -483,30 +495,30 @@ ProfileTime.prototype.processLocationTime = function(results) {
 function TimeToolTip(nameLink){
     var url = nameLink.getAttribute("href");
     var name = "" + nameLink.innerHTML;
-    //To say "Bob's time: "
+    //To say "Bob's time: " or "Jess' time: "
     var firstNamePossessive = name.substring(0, name.indexOf(" ")); 
-    if (firstNamePossessive.indexOf("s") == firstNamePossessive.length -1){
+    if (firstNamePossessive.indexOf("s") === firstNamePossessive.length -1){
         firstNamePossessive += "'"; // Jess' time
     } else {
         firstNamePossessive += "'s" //Bob's time
     }
-    document.of
+    
     var colour = "red";
     var toopTipStyle =  "border: 10px "+colour+" solid;" + 
                         "border-radius: 10px; background:"+ colour +"; font: white;"
     var timeStyle = "font-style: italic;"
     var bottomTriangleStyle =   "border-left: 10px transparent solid; "+
                                 "border-right: 10px transparent solid; "+
-                                "border-top: 10px "+colour+" solid; width: 0px;"
+                                "border-top: 10px "+colour+" solid; width: 0px;";
      
     var toolTip = document.createElement("div");
-        toolTip.setAttribute("style", toopTipStyle)
-        toolTip.innerHTML = firstNamePossessive + " time:"
-        //TODO add tooltip triangle
+        toolTip.setAttribute("style", toopTipStyle);
+        toolTip.innerHTML = firstNamePossessive + " time:";
+        /** @TODO add tooltip triangle */
     var timeElement = document.createElement("span");
-        timeElement.setAttribute("style", timeStyle)
+        timeElement.setAttribute("style", timeStyle);
         
-        timeElement.innerHTML = "Loading..."
+        timeElement.innerHTML = "Loading...";
         
         toolTip.appendChild(timeElement);
     
@@ -554,7 +566,7 @@ pageMonitor = {
      * Once registered, we set event listeners to fire onDOMNodeInserted and onDOMNodeRemoved to  
      * call #pageMonitor.checkChats */
     registerPagelet:function(){
-        my_log("registering..."); //TODO Remove log
+        my_log("registering..."); /** @TODO remove log */
         if (!pageMonitor.chatPaglet){
             var e = document.getElementById(pageMonitor.chatPageletId);
             if ( e ){
@@ -571,27 +583,27 @@ pageMonitor = {
      * their 'onhover' events. */
     checkChats:function(){
         if(pageMonitor.isCheckingChats) return; 
-        pageMonitor.isCheckingChats = true; //this prevents multiple calls running over each other
-        my_log("checking chats..."); //TODO Remove log
+        pageMonitor.isCheckingChats = true; //this prevents multiple calls running over each other.
+        my_log("checking chats..."); /** @TODO remove log */
         
         var checkedSet = document.getElementsByClassName(pageMonitor.checkedClass);
         
         if (!pageMonitor.chatSet){ //on first run
-            my_log("setting")  //TODO Remove log
-            //we slice to get a copy/clone rather than a reference
+            my_log("setting"); /** @TODO remove log */
+            //we slice to get a copy/clone rather than a reference.
             pageMonitor.chatSet = [].slice.call(checkedSet);             
         } else {
-            var changed = checkedSet.length != pageMonitor.chatSet.length ? true : false;
+            var changed = checkedSet.length !== pageMonitor.chatSet.length ? true : false;
             for(var i=0,j=checkedSet.length; i<j; i++){               
-              if ( checkedSet[i] != pageMonitor.chatSet[i] ){
-                  my_log("different item at "+ i); //TODO Remove log
+              if ( checkedSet[i] !== pageMonitor.chatSet[i] ){
+                  my_log("different item at "+ i); /** @TODO remove log */
                   changed=true;
               }
             };
-            //if changed, we recopy and continue
+            //if changed, we recopy and continue.
             if (changed){
                 pageMonitor.chatSet = [].slice.call(checkedSet);
-                my_log("new set!")            //TODO Remove log
+                my_log("new set!");           /** @TODO remove log */
             } else { //nothing has changed.
                 pageMonitor.isCheckingChats = false;
                 return;
@@ -607,7 +619,7 @@ pageMonitor = {
            time.getTime();
         
             my_log("checkedSet name: " + checkedSet[i].innerHTML +
-                  "url: " + checkedSet[i].getAttribute("href")  ); //TODO Remove log
+                  "url: " + checkedSet[i].getAttribute("href")  ); /** @TODO remove log */
         };
         
     },
@@ -623,8 +635,9 @@ pageMonitor = {
     stop:function(){
         clearInterval(this.checkInterval);
     }
-}
+};
 
 //start monitoring
 pageMonitor.start();
+//Reset script
 //storage.eraseStorage();
