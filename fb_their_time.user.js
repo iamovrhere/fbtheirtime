@@ -9,11 +9,21 @@
 // ==/UserScript==
 
 var DEBUGGING = true;
+var VERBOSE = true;
 
-/** Convience function for debugging. */
- my_log = function (arg) { 
-     if (DEBUGGING){
-       unsafeWindow.console.log(arg); 
+/** Convience function for debugging. 
+ * @param {string} message The message to output.
+ * @param {bool} isVerbose Whether or not this message is to be considered verbose. 
+ * Default is <code>false</code> 
+ * @see DEBUGGING
+ * @see VERBOSE */
+ my_log = function (message, isVerbose) { 
+    if (DEBUGGING){
+        if (isVerbose && !VERBOSE ){ 
+            //if verbose, but verbosity is off. 
+            return;
+        }
+        unsafeWindow.console.log(message);         
     }
 };
 
@@ -84,7 +94,7 @@ storage = {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /** Handles httpRequests to facebook and google. 
- * @version 0.3.0 */
+ * @version 0.4.0 */
 myHttpRequests = {
     /** The Facebook class used to contain "about me" summaries on the front page. */
     aboutClass: '_4_ug',
@@ -106,7 +116,8 @@ myHttpRequests = {
         var fromLoc = "";
         
         /** @TODO remove log */
-        my_log("aboutPerson: " + aboutPerson + " " + aboutPerson.length); 
+        my_log("fbLocationFromDOM: aboutPerson: " + 
+                aboutPerson + " " + aboutPerson.length, true); 
         
         for (var i = aboutPerson.length - 1; i >= 0; i--){
           var string = ""+aboutPerson[i].innerHTML;
@@ -116,7 +127,7 @@ myHttpRequests = {
               fromLoc = aboutPerson[i].getElementsByTagName('a')[0].innerHTML;
           }
         };
-        my_log(livesIn+fromLoc);
+        my_log("fbLocationFromDOM: " +livesIn+","+fromLoc, true);
         return { lives: livesIn, from: fromLoc };
     },
     
@@ -133,16 +144,16 @@ myHttpRequests = {
     /** 
      * Parses facebook's page, strips the comments and exracts the location data.
      * @param {String} dest The facebook profile to GET. 
-     * @param {Function} callback The action to perform on load.
+     * @param {BinaryCallback} callback Contains the functions to call on
+     * success or failure. 
+     * <br/>On success: 
      * Expects one parameter: Object/Associative array. Where the members are:
      * {lives: "Lives in String", from: "From String" }.
-     * @param {Object} callbackContext (Optional). The context to perform the callback in 
-     * (important for chaining).  
+     * <br/>On failure; failure is called.
      *  
      * */
-    facebookLocation:function(dest, callback, callbackContext) {
-        /** @TODO remove log */
-        my_log("trying "+dest); 
+    facebookLocation:function(dest, callback) {
+        my_log("facebookLocation: trying "+dest); 
         
         GM_xmlhttpRequest({
           method: "GET",
@@ -164,21 +175,18 @@ myHttpRequests = {
                 }
                 
                 var locs = myHttpRequests.fbLocationFromDOM(responseXML.documentElement);
-               
-                if (callbackContext){    
-                    callback.call(callbackContext, locs);
-                } else
-                  callback(locs);
+                
+                callback.onSuccess.call(callback, locs);               
                  
-                /** @TODO remove log */ 
-                my_log("fb check exiting... "); 
+                my_log("facebookLocation: exiting... "); 
                    
             },
             
             onprogress:function(response){
-                my_log("loading..."); /** @TODO remove log */
+                my_log("loading...", true); /** @TODO remove log */
             },
             onerror: function(response){
+                callback.onFailure.call(callback, locs);
                 my_log("error!"); /** @TODO remove log */
             }
         }
@@ -249,10 +257,11 @@ myHttpRequests = {
                 
                 if (callbackContext){
                     callback.call(callbackContext, result);                    
-                } else
+                } else {
                   callback(result);    
+                }
                   
-               my_log("Google search exiting..."); /** @TODO remove log */
+               my_log("Google search exiting...");
             },
         
             onprogress:function(response){
@@ -272,6 +281,48 @@ myHttpRequests = {
 ///// End myHttpRequests
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///// Start CallbackInterface object
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+/**
+ * Creates a new BinaryCallback object; where there is a callback for
+ * success or failure.
+ * 
+ * @param {Object} context The callback context for the two functions.
+ * @param {Function} onSuccess The callback for success. can receive ONE argument.
+ * @param {Function} onFailure The callback for failure. can received ONE argument.
+ *
+ * @version 0.1.0
+ * @this CallbackInterface
+ */
+function BinaryCallback(context, onSuccess, onFailure){
+    this.callbackContext = context;
+    this.successCallback = onSuccess;
+    this.failureCallback = onFailure;
+}
+
+/** Simple toString function for debugging purposes. */
+BinaryCallback.prototype.toString = function() {
+    return "BinaryCallback("+this.callbackContext+")";
+};
+
+/** The function called on success. Accepts <b>one</b> parameter.
+ * @param {Object} param (Optional). The parameter to send back. 
+ */
+BinaryCallback.prototype.onSuccess = function(param) {
+    this.successCallback.call(this.callbackContext, param);
+};
+
+/** The function called on failure. Accepts <b>one</b> parameter.
+ * @param {Object} param (Optional). The parameter to send back. 
+ */
+BinaryCallback.prototype.onFailure = function(param) {
+    this.failureCallback.call(this.callbackContext, param);
+};
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///// End Callback object
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// Start ProfileTime object
@@ -283,7 +334,7 @@ myHttpRequests = {
  * If it cannot determine it from localStorage (or the values have expired) 
  * it will attempt to fetch via HttpRequests. Once the time difference is acquired
  * the resulting time difference will be returned via the callback.
- * @version 0.2.1
+ * @version 0.2.2
  * @this ProfileTime
  * @param {String} profileUrl The facebook profile to check time of. */
 function ProfileTime(profileUrl){
@@ -295,28 +346,42 @@ function ProfileTime(profileUrl){
     /** The username for this profile account. Used as storage key. */
     this.username = profileUrl.substring(start); 
     
-    
-    
     /** How long is a stored date valid for. 
      * Note: 86400000 milliseconds in a day. */
     var expirationThreshold = 60000; //60 seconds 
     //30000; //30 seconds //300000; //5 minutes //604800000; //7 days
     
+    /** The callback after facebook location is found. BinaryCallback. */
+    this.facebookLocationCallback = 
+            new BinaryCallback(
+                this, 
+                this.checkLocationTime, 
+                function(){this.onFailure("'Facbook location check' failed");});
+    
     /** This is the object that is placed/retrieved in/from storage. */
     this.timeStatus = {hoursDiff: null, expires: null, timezone: null, lastLocation: null };
     /** Set the expiration time for timeStatus. */ 
-    this.setExpirationTime = function(){ this.timeStatus.expires= (new Date()).getTime() + expirationThreshold; }        
+    this.setExpirationTime = function(){ 
+        this.timeStatus.expires= (new Date()).getTime() + expirationThreshold; 
+    };        
     
     /** Returns the current time from 1970 in milliseconds. */ 
     this.getCurrentAbsTime = function(){ return (new Date()).getTime(); };
     /** The callback to send back the time. */
     this.getTimeCallback = function(){};
-    my_log(this.username);
+    
+    my_log("ProfileTime:"+ this.username);
 }
 
 /** Simple toString function for debugging purposes. */
 ProfileTime.prototype.toString = function() {
-  return "ProfileTime";
+  return "ProfileTime("+this.username+")";
+};
+
+/** Generic failure of the request. 
+ * @param {string} message The failure message. */
+ProfileTime.prototype.onFailure = function(message) {
+    my_log(message);
 };
 
 //Step 4: Finish
@@ -325,10 +390,11 @@ ProfileTime.prototype.toString = function() {
 ProfileTime.prototype.timeStatusAcquired = function() {
     //commit attributes
     storage.setObject(this.username, this.timeStatus);
-    /** @TODO remove log */
+    
     my_log("store valid: timeStatus: " + 
             this.timeStatus.expires + " " + this.timeStatus.hoursDiff 
-            + " " + this.timeStatus.timezone + " " + this.timeStatus.lastLocation);
+            + " " + this.timeStatus.timezone + " " + this.timeStatus.lastLocation,
+            true);
     this.getTimeCallback();
 };
 
@@ -337,7 +403,7 @@ ProfileTime.prototype.timeStatusAcquired = function() {
  * If the difference is not available or too old, it is gathered from their profile page. 
  * @this ProfileTime 
  * @param {Function} callback (Optional). As the time gathering may or may not be asynchronous,
- * We do a callback to get the time. */
+ * We do a callback to get the time. Expects string as parameter. */
 ProfileTime.prototype.getTime = function(callback) {
     if (callback){
         this.getTimeCallback = callback;
@@ -352,7 +418,7 @@ ProfileTime.prototype.getTime = function(callback) {
     if (userStore && this.checkIfTimeValid()){
         this.timeStatusAcquired();        
     } else {    
-        myHttpRequests.facebookLocation(this.url, this.checkLocationTime, this);
+        myHttpRequests.facebookLocation(this.url, this.facebookLocationCallback);
     }    
 };
 
@@ -386,11 +452,11 @@ ProfileTime.prototype.isSameLocation = function(location) {
  * @param {Object} locations Expecting an object/associative array with two members; "from" and "lives". 
  * */
 ProfileTime.prototype.checkLocationTime = function(locations) {
-    my_log("reached checkLocationTime: " + locations); /** @TODO remove log */
+    my_log("reached checkLocationTime: " + locations);
     var lives = locations.lives;
     var from = locations.from;
-    my_log(lives); /** @TODO remove log */
-    my_log(from); /** @TODO remove log */
+    my_log(lives, true);
+    my_log(from, true); 
     
     if (lives){
         if (this.isSameLocation(lives)){
@@ -640,4 +706,4 @@ pageMonitor = {
 //start monitoring
 pageMonitor.start();
 //Reset script
-//storage.eraseStorage();
+storage.eraseStorage();
