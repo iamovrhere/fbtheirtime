@@ -5,7 +5,7 @@
 // @description Provides a simple tool tip to display a contacts current time.
 // @include     https://www.facebook.com/*
 // @include     http://www.facebook.com/*
-// @version     0.1.2
+// @version     0.1.3
 // ==/UserScript==
 
 var DEBUGGING = true;
@@ -32,9 +32,9 @@ var DAYS_OF_WEEK = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Fri
 
 
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// Start storage object
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 /** Reads and writes objects to storage. 
  * It is worth noting this cannot be inspected by cookie manager.
  * 
@@ -84,14 +84,14 @@ storage = {
 };
 
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// End storage
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// Start myHttpRequests object
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /** Handles httpRequests to facebook and google. 
  * @version 0.5.0 */
@@ -279,13 +279,13 @@ myHttpRequests = {
     foo:function(){}
 };
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// End myHttpRequests
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// Start CallbackInterface object
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 /**
  * Creates a new BinaryCallback object; where there is a callback for
  * success or failure.
@@ -322,13 +322,13 @@ BinaryCallback.prototype.onFailure = function(param) {
     this.failureCallback.call(this.callbackContext, param);
 };
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// End Callback object
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// Start ProfileTime object
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /** Creates a profile time object. 
  * To start the function getTime(callback) must be called.
@@ -336,7 +336,7 @@ BinaryCallback.prototype.onFailure = function(param) {
  * If it cannot determine it from localStorage (or the values have expired) 
  * it will attempt to fetch via HttpRequests. Once the time difference is acquired
  * the resulting time difference will be returned via the callback.
- * @version 0.2.3
+ * @version 0.2.4
  * @this ProfileTime
  * @param {String} profileUrl The facebook profile to check time of. */
 function ProfileTime(profileUrl){
@@ -366,7 +366,23 @@ function ProfileTime(profileUrl){
                 function(){this.onFailure("'Location time check' failed");});                
     
     /** This is the object that is placed/retrieved in/from storage. */
-    this.timeStatus = {hoursDiff: null, expires: null, timezone: null, lastLocation: null };
+    this.timeStatus = {
+        /** Expects +ve if the timezone is behind:
+         * -8am here, 4am there --> -4. 
+         * @type number */
+        hoursDiff: null, 
+        /** Expects +ve if the timezone is behind:
+         * -8am here, 4am there --> -240.
+         * @type number */
+        minsDiff: null, 
+        /** When the time will expire. 
+         * @type number */
+        expires: null, 
+        /*** @type string The timezone to show */
+        timezone: null, 
+        /** @type string The last known location. */
+        lastLocation: null 
+    };
     /** Set the expiration time for timeStatus. */ 
     this.setExpirationTime = function(){ 
         this.timeStatus.expires= (new Date()).getTime() + expirationThreshold; 
@@ -399,8 +415,9 @@ ProfileTime.prototype.timeStatusAcquired = function() {
     storage.setObject(this.username, this.timeStatus);
     
     my_log("ProfileTime: store valid: timeStatus: " + 
-            this.timeStatus.expires + " " + this.timeStatus.hoursDiff 
-            + " " + this.timeStatus.timezone + " " + this.timeStatus.lastLocation,
+            this.timeStatus.expires + " " + this.timeStatus.hoursDiff + " "+ 
+            this.timeStatus.minsDiff + " " + 
+            this.timeStatus.timezone + " " + this.timeStatus.lastLocation,
             true);
     this.getTimeCallback();
 };
@@ -435,10 +452,8 @@ ProfileTime.prototype.getTime = function(callback) {
  * <code>false</code> if expired. */
 ProfileTime.prototype.checkIfTimeValid = function(){
     if (this.timeStatus){
-        var expire = this.timeStatus.expires;
-        var today = this.getCurrentAbsTime();
-        /** @TODO remove log */
-        my_log("ProfileTime: today: " + this.getCurrentAbsTime() + "  expires: "+ this.timeStatus.expires  ); 
+        my_log("ProfileTime: today: " + this.getCurrentAbsTime() + 
+                "  expires: "+ this.timeStatus.expires  ); 
         return ( this.getCurrentAbsTime() < this.timeStatus.expires );            
     }    
     return false;
@@ -511,13 +526,16 @@ ProfileTime.prototype.processLocationTime = function(results) {
     var time = ""+results.time; 
     //Their hours & minutes.
     var theirHours = time.substring(0, time.indexOf(":"));
+        theirHours = parseInt(theirHours);
     var theirMinutes =  time.substr(time.indexOf(":")+1, 2);
-    //minutes difference
-    var minsDiff = theirMinutes - today.getMinutes();
+        theirMinutes = parseInt(theirMinutes);
+    
          
     //Convert to 24 time.
-    if (time.toLowerCase().contains("pm") && parseInt(theirHours) < 12){
-        theirHours = parseInt(theirHours) + 12;
+    if (time.toLowerCase().contains("pm") ){
+        if (theirHours < 12){
+            theirHours = theirHours + 12;
+        }   //let 12pm be 12pm.
     } else if (theirHours === 12){
         theirHours = 0;
     }
@@ -525,40 +543,51 @@ ProfileTime.prototype.processLocationTime = function(results) {
     //whether *my* time is a day ahead (+1), behind(-1) or the same (0).
     var dayDifference = 0; 
     if (tDayIndex === results.dayIndex ){
-    } else if ( tDayIndex > results.dayIndex || tDayIndex === 6 ){
+    } else if ( tDayIndex > results.dayIndex || 6 === tDayIndex ){
+        //if Saturday here, or here is "tomorrow".
         dayDifference = 1;
-    } else if ( tDayIndex < results.dayIndex ||  results.dayIndex === 6){
+    } else if ( tDayIndex < results.dayIndex || 6 === results.dayIndex){
+        //if Saturday *there*, or *there* is "tomorrow"
         dayDifference = -1;
     }
     
     //-ve is behind, +ve is ahead.  
     var hoursDiff =  (today.getHours() - theirHours + 24*dayDifference)%24;
-    
-    if (theirMinutes > 55 && !today.getMinutes() ){
+    if (theirMinutes > 55 && today.getMinutes() === 0 ){
         //retrieved time is after 55, and the local time is on the hour
         hoursDiff -= 1; //reduce by one hour, as they are at xx:59
     }
-    //reduce to either 30 or 0
-    //minsDiff = Math.abs(minsDiff) > 20 ? 30 : 0;  
-    this.timeStatus.hoursDiff = hoursDiff;
+    
+    var theirTotalMins = (theirHours + 24*dayDifference)%24 * 60 + theirMinutes;
+    var myTotalMins = today.getHours() * 60 + today.getMinutes();
+    
+    my_log("difference: theirTotalMins=" + theirTotalMins +" myTotalMins=" + myTotalMins +" ");
+    
+    //-ve is behind, +ve is ahead.  
+    var minsDiff = myTotalMins - theirTotalMins ;
+    //Round mins difference to closest 5, keeping sign.
+    minsDiff = (minsDiff < 0 ? -1 : 1) * Math.ceil(Math.abs(minsDiff)/5)*5; 
+    
+    this.timeStatus.minsDiff = -1*minsDiff;
+    this.timeStatus.hoursDiff = -1*hoursDiff;
     this.timeStatus.timezone  = results.timezone;
     this.setExpirationTime();
     //this.timeStatus.lastLocation //set in checkLocationTime    
     
     my_log("24 hr: "+  results.day + " "+ theirHours + ":" + theirMinutes + " " + results.timezone);
-    my_log("difference: " + hoursDiff +" hrs " + minsDiff +" minutes");
+    my_log("difference: " + -1*hoursDiff +" hrs " + -1*minsDiff +" minutes");
     this.timeStatusAcquired();
 };
 
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// End ProfileTime
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// Start TimeToolTip object
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /** Creates a time tooltip to display time.
  * The initial state of the tool tip is to display: 
@@ -600,13 +629,13 @@ function TimeToolTip(nameLink){
     
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// End TimeToolTip
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// Start pageMonitor
-///////////////////////////////////////////////////////////////////////////////////////////////////////////    
+////////////////////////////////////////////////////////////////////////////////////////////////////////    
 
 
 /* NOTE: 
@@ -617,7 +646,7 @@ function TimeToolTip(nameLink){
  
 /** Singleton.
  * Responsible for checking the page for changes and attaching events.
- * @version 0.2.0 */
+ * @version 0.2.1 */
 pageMonitor = {
     /** Check frequency in milliseconds. */
     checkFrequency: 5000,
@@ -644,16 +673,19 @@ pageMonitor = {
      * call #pageMonitor.checkChats */
     registerPagelet:function(){
         my_log("registering..."); /** @TODO remove log */
-        if (!pageMonitor.chatPaglet){
+        if (!pageMonitor.chatPagelet){
             var e = document.getElementById(pageMonitor.chatPageletId);
             if ( e ){
-                pageMonitor.chatPaglet = e;        
+                pageMonitor.chatPagelet = e;  
                 e.addEventListener ("DOMNodeInserted", function(){ pageMonitor.checkChats();}, false);
                 e.addEventListener ("DOMNodeRemoved", function(){ pageMonitor.checkChats(); }, false);
+                pageMonitor.checkChats();
                 return; 
+            } else {
+                window.addEventListener('load', function() {pageMonitor.registerPagelet();}, false);                
             }
         } 
-        setTimeout(pageMonitor.registerPagelet, 500);
+        
     },
     
     /** Checks to see current chat's open and registers/deregisters 
@@ -666,10 +698,13 @@ pageMonitor = {
         var checkedSet = document.getElementsByClassName(pageMonitor.checkedClass);
         
         if (!pageMonitor.chatSet){ //on first run
-            my_log("setting"); /** @TODO remove log */
+            my_log("setting", true); /** @TODO remove log */
             //we slice to get a copy/clone rather than a reference.
             pageMonitor.chatSet = [].slice.call(checkedSet);             
         } else {
+            my_log("comparing sets... (" + checkedSet.length+") " +
+                    " ("+pageMonitor.chatSet.length+")",
+                    true); /** @TODO remove log */
             var changed = checkedSet.length !== pageMonitor.chatSet.length ? true : false;
             for(var i=0,j=checkedSet.length; i<j; i++){               
               if ( checkedSet[i] !== pageMonitor.chatSet[i] ){
@@ -677,6 +712,7 @@ pageMonitor = {
                   changed=true;
               }
             };
+            
             //if changed, we recopy and continue.
             if (changed){
                 pageMonitor.chatSet = [].slice.call(checkedSet);
@@ -685,28 +721,27 @@ pageMonitor = {
                 pageMonitor.isCheckingChats = false;
                 return;
             }
+            
         }
         
         pageMonitor.isCheckingChats = false;        
         
-        //changes happened so we do things
+        //we have new windows, so we have work to do.
         for(var i=0,j=checkedSet.length; i<j; i++){
-           // myHttpRequests.facebookLocation(checkedSet[i].getAttribute("href"), pageMonitor.checkLocationTime);
            var time = new ProfileTime(checkedSet[i].getAttribute("href"));
            time.getTime();
         
             my_log("checkedSet name: " + checkedSet[i].innerHTML +
                   "url: " + checkedSet[i].getAttribute("href")  ); /** @TODO remove log */
         };
-        
     },
     
     
     /** Starts the monitor. */ 
     start:function(){
         my_log("started"); //TODO Remove log
-        //pageMonitor.registerPagelet();
-        pageMonitor.checkInterval = setInterval(this.checkChats, this.checkFrequency, null);
+        pageMonitor.registerPagelet();
+        //pageMonitor.checkInterval = setInterval(this.checkChats, this.checkFrequency, null);
     },
     /** Stops the monitor. */
     stop:function(){
