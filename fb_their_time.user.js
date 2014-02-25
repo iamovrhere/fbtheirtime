@@ -5,7 +5,7 @@
 // @description Provides a simple tool tip to display a contacts current time.
 // @include     https://www.facebook.com/*
 // @include     http://www.facebook.com/*
-// @version     0.1.4
+// @version     0.1.5
 // ==/UserScript==
 
 var DEBUGGING = true;
@@ -94,15 +94,15 @@ storage = {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /** Handles httpRequests to facebook and google. 
- * @version 0.5.0 */
+ * @version 0.5.1 */
 myHttpRequests = {
     /** The Facebook class used to contain "about me" summaries on the front page. */
-    aboutClass: '_4_ug',
+    fb_aboutClass: '_4_ug',
     /** The Google query stub to determine a location's time. */
-    googleQueryStub: 'current time in ', 
+    google_queryStub: 'current time in ', 
     /** The Google container class to find the time-answer in. 
      * If this does not exists the answer is not simple. */
-    containerClass: 'obcontainer',
+    google_containerClass: 'obcontainer',
     
     /** 
      * Gathers the location from the DOM. 
@@ -111,11 +111,10 @@ myHttpRequests = {
      * { lives: "Lives in String", from: "From String"}. The default values are blank strings.
      * */
     fbLocationFromDOM:function(dom){
-        var aboutPerson = dom.getElementsByClassName(myHttpRequests.aboutClass);
+        var aboutPerson = dom.getElementsByClassName(myHttpRequests.fb_aboutClass);
         var livesIn = ""; 
         var fromLoc = "";
         
-        /** @TODO remove log */
         my_log("fbLocationFromDOM: aboutPerson: " + 
                 aboutPerson + " " + aboutPerson.length, true); 
         
@@ -183,10 +182,10 @@ myHttpRequests = {
             },
             
             onprogress:function(response){
-                my_log("loading...", true); /** @TODO remove log */
+                my_log("facebookLocation: loading...", true); 
             },
             onerror: function(response){
-                my_log("error!"); /** @TODO remove log */
+                my_log("facebookLocation: error!"); 
                 callback.onFailure.call(callback);
             }
         }
@@ -208,7 +207,7 @@ myHttpRequests = {
      *   
      * */
     googleCurrentTime:function(location, callback) {
-        var dest = "http://www.google.com/search?q=" +myHttpRequests.googleQueryStub + location;
+        var dest = "http://www.google.com/search?q=" +myHttpRequests.google_queryStub + location;
         
         GM_xmlhttpRequest({
           method: "GET",
@@ -225,7 +224,7 @@ myHttpRequests = {
                     responseXML = response.responseXML;
                 }
                 var answer = responseXML.documentElement
-                                        .getElementsByClassName(myHttpRequests.containerClass);
+                                        .getElementsByClassName(myHttpRequests.google_containerClass);
                 var result = new Object();
                 
                 if (answer && answer.length){                
@@ -266,10 +265,10 @@ myHttpRequests = {
             },
         
             onprogress:function(response){
-                my_log("loading..."); /** @TODO remove log */
+                my_log("googleCurrentTime: loading...");
             },
             onerror: function(response){
-                my_log("error!"); /** @TODO remove log */
+                my_log("googleCurrentTime: error!"); 
                 callback.onFailure.call(callback);                    
             }
         }
@@ -350,7 +349,7 @@ function ProfileTime(profileUrl){
     
     /** How long is a stored date valid for. 
      * Note: 86400000 milliseconds in a day. */
-    var expirationThreshold = 60000; //60 seconds 
+    var expirationThreshold = 604800000; //7 days
     //30000; //30 seconds //300000; //5 minutes //604800000; //7 days
     
     /** The callback after facebook location is found. BinaryCallback. */
@@ -523,7 +522,7 @@ ProfileTime.prototype.checkLocationTime = function(locations) {
         }
     } else {
         this.failedRequest("Location Unknown.");    
-        my_log("ProfileTime: Location Unknown."); /** @TODO remove log */
+        my_log(''+this+": Location Unknown."); 
     }
 };
 
@@ -537,11 +536,10 @@ ProfileTime.prototype.checkLocationTime = function(locations) {
 ProfileTime.prototype.processLocationTime = function(results) {
     if (!(results instanceof Object) || !results.time ){
         this.failedRequest("Time Unknown.");  
-        my_log("ProfileTime: Time Unknown."); /** @TODO remove log */
+        my_log(''+this+": Time Unknown."); 
         return ;
     }
-    my_log("ProfileTime: reached processLocationTime");
-    my_log("username still: " + this.username, true);
+    my_log(''+this+": reached processLocationTime");
     my_log(results, true);    
     
     var today = new Date();
@@ -923,7 +921,6 @@ pageMonitor = {
      * Once registered, we set event listeners to fire onDOMNodeInserted and onDOMNodeRemoved to  
      * call #pageMonitor.checkChats */
     registerPagelet:function(){
-        my_log("registering..."); /** @TODO remove log */
         if (!pageMonitor.chatPagelet){
             var e = document.getElementById(pageMonitor.chatPageletId);
             if ( e ){
@@ -945,18 +942,18 @@ pageMonitor = {
         if(pageMonitor.isCheckingChats) return; 
         //this prevents multiple calls running over each other when using intervals.
         pageMonitor.isCheckingChats = true; 
-        my_log("checking chats..."); /** @TODO remove log */
+        my_log("checkChats: start..."); 
         
         var checkedSet = document.getElementsByClassName(pageMonitor.maxChatClass);
         
         if (!pageMonitor.chatSet){ //on first run
-            my_log("setting", true); /** @TODO remove log */
+            my_log("setting", true); 
             //we slice to get a copy/clone rather than a reference.
             pageMonitor.chatSet = [].slice.call(checkedSet);             
         } else {
             my_log("comparing sets... (" + checkedSet.length+") " +
                     " ("+pageMonitor.chatSet.length+")",
-                    true); /** @TODO remove log */
+                    true);
             var changed = checkedSet.length !== pageMonitor.chatSet.length ? true : false;
             for(var index=0,SIZE=checkedSet.length; index<SIZE; index++){               
               if ( checkedSet[index] !== pageMonitor.chatSet[index] ){
@@ -991,7 +988,6 @@ pageMonitor = {
     
     /** Starts the monitor. */ 
     start:function(){
-        my_log("started"); //TODO Remove log
         pageMonitor.registerPagelet();
         //pageMonitor.checkInterval = setInterval(this.checkChats, this.checkFrequency, null);
     },
@@ -1004,4 +1000,4 @@ pageMonitor = {
 //start monitoring
 pageMonitor.start();
 //Reset script
-storage.eraseStorage();
+//storage.eraseStorage();
