@@ -695,7 +695,7 @@ util = {
  * <br/>
  * @todo Create a time tooltip to display time.
  * 
- * @version 0.2.0
+ * @version 0.2.1
  * @this TimeToolTip
  * @param {node} nameLink The DOM object with their profile link and name. */
 function TimeToolTip(nameLink){
@@ -764,6 +764,26 @@ function TimeToolTip(nameLink){
     /** @type String The current timezome for this chatbox. Default is 0. */
     this.timezone = 0;
     
+    /** @type String Public reference to the url. */           
+    this.url = hrefUrl;
+    /** @type node The chat container parent. */
+    this.chatContainer = util.getAncestorByClassName(nameLink, 'fbNub', 20);               
+    
+    /** The interval reference. Default is 0. */
+    this.updateTimeInterval = 0;
+    var mouseoverfunc = function() {
+                                this._TimeToolTip.timeUpdate();
+                            };
+    
+    if (this.chatContainer ){
+        this.chatContainer['_TimeToolTip'] = this;
+        this.chatContainer.addEventListener(
+                            'mouseover', 
+                            mouseoverfunc, 
+                            false); 
+    } else {
+        my_log(this+": No chat container found");
+    }
     var timecallback = new BinaryCallback(
             this,
             function(param){
@@ -775,38 +795,19 @@ function TimeToolTip(nameLink){
                 this.timeUpdate();
             },
             function(param){
+                my_log("123 failed?");
                 if ( this.chatContainer){
+                    my_log("123 removed?");
                     this.chatContainer.removeEventListener('mouseover',
-                            this.eventListeners['mouseover']);
+                            mouseoverfunc);
                 }
                 this.updateTimePhrase("Cannot determine "+this.firstNamePossessive+" time =(");                
             }
-            );
-    
-    /** @type String Public reference to the url. */           
-    this.url = hrefUrl;
-    /** @type node The chat container parent. */
-    this.chatContainer = util.getAncestorByClassName(nameLink, 'fbNub', 20);               
+    );
     
     var time = new ProfileTime(hrefUrl);
         time.getTime(timecallback);
     
-    /** The interval reference. Default is 0. */
-    this.updateTimeInterval = 0;
-    this.eventListeners = {};
-    if (this.chatContainer ){
-        this.chatContainer['_TimeToolTip'] = this;
-        this.eventListeners['mouseover'] = 
-                this.chatContainer.addEventListener(
-                            'mouseover', 
-                            function() {
-                                this._TimeToolTip.timeUpdate();
-                            }, 
-                            false); 
-    } else {
-        my_log(this+": No chat container found");
-    }
-                
     //Show or hide a styled tool tip at the mouse location.
     /* nameLink.parentNode
             .addEventListener(
