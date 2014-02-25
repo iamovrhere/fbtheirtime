@@ -5,11 +5,11 @@
 // @description Provides a simple tool tip to display a contacts current time.
 // @include     https://www.facebook.com/*
 // @include     http://www.facebook.com/*
-// @version     0.1.5
+// @version     0.2.0
 // ==/UserScript==
 
-var DEBUGGING = true;
-var VERBOSE = true;
+var DEBUGGING = false;
+var VERBOSE = false;
 
 /** Convience function for debugging. 
  * @param {string} message The message to output.
@@ -684,7 +684,10 @@ util = {
 /** 
  * Fetches and displays the local time of the passed namelink. 
  * Times are shown by hovering over the chatbox.
- * 
+ * <br/>
+ * Currently uses facebook's tooltip, can always fall back to the title 
+ * solution (2.3) in a pinch.
+ * <br/>
  * The initial state of the tool tip is to display: 
  * "Bob's time: Loading..." and upon successfully getting a time:
  * "Bob's time: 23:00 CET"
@@ -693,9 +696,8 @@ util = {
  * <br/>
  * The time is acquired via ProfileTime.
  * <br/>
- * @todo Create a time tooltip to display time.
  * 
- * @version 0.2.1
+ * @version 0.3.0
  * @this TimeToolTip
  * @param {node} nameLink The DOM object with their profile link and name. */
 function TimeToolTip(nameLink){
@@ -709,54 +711,7 @@ function TimeToolTip(nameLink){
     } else {
         this.firstNamePossessive += "'s"; //Bob's time
     }
-    
-     /** Function currently unused.
-      * @todo Add to page
-      * @todo give position of container via style
-      * @todo give position related to the title of box
-      * */
-    var createToolTip = function(){ 
-        var cssID = 'timetool-custom-style';
-        //insert custom style once
-        if (!document.getElementById(cssID)){
-            var colour = "red";
-            var toolTipStyle =  ".timetool-custom-tooltip { border: 10px "+colour+" solid; \n" + 
-                                "border-radius: 10px; \nbackground:"+ colour +
-                                "; \nfont: white;\n }";
-            var timeStyle = ".timetool-custom-time { font-style: italic; }";
-            var bottomTriangleStyle =   ".timetool-custom-arrow {\n"+
-                                         "border-left: 10px transparent solid; \n"+
-                                        "border-right: 10px transparent solid; \n"+
-                                        "border-top: 10px "+colour+" solid; width: 0px; \n }";
-            var toolTipCss = document.createElement('style');
-                          toolTipCss.setAttribute('type', 'text/css');
-                          toolTipCss.setAttribute('id', 'cssID');
-                          toolTipCss.innerHTML = toolTipStyle + timeStyle + bottomTriangleStyle;
-            var head	= document.getElementsByTagName('head')[0];
-            if ( head){
-                head.appendChild(toolTipCss);
-            }    
-        }
-
-        var toolTip = document.createElement("div");
-            toolTip.setAttribute("class", "timetool-custom-tooltip");
-            toolTip.innerHTML = this.firstNamePossessive + " time: ";
-            /** @TODO add tooltip triangle */
-        var timeElement = document.createElement("span");
-            timeElement.setAttribute("class", "timetool-custom-time");
-
-            timeElement.innerHTML = "Loading...";
-
-            toolTip.appendChild(timeElement);
-
-        var arrow = document.createElement("div");
-            arrow.setAttribute("class", "timetool-custom-arrow");
-
-        this.   container = document.createElement("div");
-                container.appendChild(toolTip);
-                container.appendChild(arrow);
-    };
-    
+        
     /** @type number The difference in the local Date from their date in milliseconds. 
      * That is: <code>new Date().getTime()  - Foreign.getTime()</code>.
      * Default is <code>false</code> Can be 0.. */
@@ -767,7 +722,14 @@ function TimeToolTip(nameLink){
     /** @type String Public reference to the url. */           
     this.url = hrefUrl;
     /** @type node The chat container parent. */
-    this.chatContainer = util.getAncestorByClassName(nameLink, 'fbNub', 20);               
+    this.chatContainer = util.getAncestorByClassName(nameLink, 'fbNub', 20);
+    /** The title bar of the chat window when open. Default 0.
+     * @type node */
+    this.chatTitleOpen = 0;
+    /** The title bar of the chat window when minimized. Default 0.
+     * @type node */
+    this.chatTitleMin = 0;
+  
     
     /** The interval reference. Default is 0. */
     this.updateTimeInterval = 0;
@@ -780,7 +742,16 @@ function TimeToolTip(nameLink){
         this.chatContainer.addEventListener(
                             'mouseover', 
                             mouseoverfunc, 
-                            false); 
+                            false);
+       var cTitleOpen =   this.chatContainer.getElementsByClassName('titlebarTextWrapper');
+       if (cTitleOpen.length > 0){
+           this.chatTitleOpen = cTitleOpen[0];
+       }
+       var cTitleMin =   this.chatContainer.getElementsByClassName('name');
+       if (cTitleMin.length > 0){
+           //we want the grandparent, and this is the fastest route.
+           this.chatTitleMin = cTitleMin[0].parentNode.parentNode;
+       }
     } else {
         my_log(this+": No chat container found");
     }
@@ -795,9 +766,7 @@ function TimeToolTip(nameLink){
                 this.timeUpdate();
             },
             function(param){
-                my_log("123 failed?");
                 if ( this.chatContainer){
-                    my_log("123 removed?");
                     this.chatContainer.removeEventListener('mouseover',
                             mouseoverfunc);
                 }
@@ -871,7 +840,13 @@ TimeToolTip.prototype.timeUpdate = function(){
  */
 TimeToolTip.prototype.updateTimePhrase = function(timePhrase){
     if (this.chatContainer){
-        this.chatContainer.setAttribute('title', timePhrase);
+        /** @todo insert image for time and attach tooltip to that. */
+        //this.chatContainer.setAttribute('title', timePhrase);
+        this.chatTitleMin.setAttribute('title', timePhrase);
+        //this.chatTitleMin.setAttribute('aria-label', timePhrase);
+        //this.chatTitleMin.setAttribute('data-hover', 'tooltip');
+        this.chatTitleOpen.setAttribute('aria-label', timePhrase);
+        this.chatTitleOpen.setAttribute('data-hover', 'tooltip');
         my_log(this + ": updateTimePhrase - " +timePhrase, true);
     }
 };
@@ -926,6 +901,7 @@ pageMonitor = {
             var e = document.getElementById(pageMonitor.chatPageletId);
             if ( e ){
                 pageMonitor.chatPagelet = e;  
+                /** @todo Dom mutation events are deprecated; replace with dom mutations. */
                 e.addEventListener ("DOMNodeInserted", function(){ pageMonitor.checkChats();}, false);
                 e.addEventListener ("DOMNodeRemoved", function(){ pageMonitor.checkChats(); }, false);
                 pageMonitor.checkChats();
