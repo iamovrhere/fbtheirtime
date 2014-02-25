@@ -5,7 +5,7 @@
 // @description Provides a simple tool tip to display a contacts current time.
 // @include     https://www.facebook.com/*
 // @include     http://www.facebook.com/*
-// @version     0.1.3
+// @version     0.1.4
 // ==/UserScript==
 
 var DEBUGGING = true;
@@ -27,7 +27,7 @@ var VERBOSE = true;
     }
 };
 
-/** Days of the week, ordered: Sunday is [0]. */
+/** Days of the week as given by Google, ordered: Sunday is [0]. */
 var DAYS_OF_WEEK = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 
@@ -336,7 +336,7 @@ BinaryCallback.prototype.onFailure = function(param) {
  * If it cannot determine it from localStorage (or the values have expired) 
  * it will attempt to fetch via HttpRequests. Once the time difference is acquired
  * the resulting time difference will be returned via the callback.
- * @version 0.2.4
+ * @version 0.3.0
  * @this ProfileTime
  * @param {String} profileUrl The facebook profile to check time of. */
 function ProfileTime(profileUrl){
@@ -374,7 +374,7 @@ function ProfileTime(profileUrl){
         /** Expects +ve if the timezone is behind:
          * -8am here, 4am there --> -240.
          * @type number */
-        minsDiff: null, 
+        totalMinsDiff: null, 
         /** When the time will expire. 
          * @type number */
         expires: null, 
@@ -390,8 +390,9 @@ function ProfileTime(profileUrl){
     
     /** Returns the current time from 1970 in milliseconds. */ 
     this.getCurrentAbsTime = function(){ return (new Date()).getTime(); };
-    /** The callback to send back the time. */
-    this.getTimeCallback = function(){};
+    /** The callback to send back the time. 
+     * @type BinaryCallback */
+    this.getTimeCallback = {};
     
     my_log("ProfileTime:"+ this.username);
 }
@@ -416,18 +417,41 @@ ProfileTime.prototype.timeStatusAcquired = function() {
     
     my_log("ProfileTime: store valid: timeStatus: " + 
             this.timeStatus.expires + " " + this.timeStatus.hoursDiff + " "+ 
-            this.timeStatus.minsDiff + " " + 
+            this.timeStatus.totalMinsDiff + " " + 
             this.timeStatus.timezone + " " + this.timeStatus.lastLocation,
             true);
-    this.getTimeCallback();
+    
+    var minsDiff = parseInt(this.timeStatus.totalMinsDiff);
+    var hoursDiff = Math.floor(parseInt(this.timeStatus.totalMinsDiff)/60);
+    minsDiff = minsDiff - 60* hoursDiff;
+    var now = new Date();
+    var date = new Date();
+    date.setHours(now.getHours() + hoursDiff);
+    date.setMinutes(now.getMinutes() + minsDiff);
+    var result = {
+        date: date,
+        hoursDiff: hoursDiff, 
+        minsDiff: minsDiff, 
+        timezone: this.timeStatus.timezone
+    };
+    my_log(result);
+    if (this.getTimeCallback){
+        this.getTimeCallback.onSuccess.call(this.getTimeCallback, result);  
+    }
 };
 
 //Step 1: Start
 /** Attempts to get the time by checking the cookies and parsing the time difference. 
  * If the difference is not available or too old, it is gathered from their profile page. 
+ * <br/><br/>
+ * The time is returned in the callback in the form: 18:45 PST
+ * 
  * @this ProfileTime 
- * @param {Function} callback (Optional). As the time gathering may or may not be asynchronous,
- * We do a callback to get the time. Callback expects string as parameter. */
+ * @param {BinaryCallback} callback As the time gathering is asynchronous,
+ * We do a callback to get the time. 
+ * 
+ * Callback either expects string or object with the form:
+ * {date: Date, hoursDiff: 0, minsDiff: 0, timezone: 'string'}. */
 ProfileTime.prototype.getTime = function(callback) {
     if (callback){
         this.getTimeCallback = callback;
@@ -480,11 +504,12 @@ ProfileTime.prototype.checkLocationTime = function(locations) {
     my_log(lives, true);
     my_log(from, true); 
     
+    //We prefer to get the time on where they live, but if not, where they are from
     if (lives){
-        if (this.isSameLocation(lives)){
+        if (this.isSameLocation(lives)){ //if same location, we are finish.
             this.setExpirationTime();
-            this.timeStatusAcquired();     
-        } else {
+            this.timeStatusAcquired();  
+        } else {//if new location, get a new time.
             this.timeStatus.lastLocation = lives;
             myHttpRequests.googleCurrentTime(lives, this.locationTimeCallback);
         }
@@ -497,7 +522,7 @@ ProfileTime.prototype.checkLocationTime = function(locations) {
             myHttpRequests.googleCurrentTime(from, this.locationTimeCallback);
         }
     } else {
-        this.getTimeCallback("Location Unknown.");        
+        this.failedRequest("Location Unknown.");    
         my_log("ProfileTime: Location Unknown."); /** @TODO remove log */
     }
 };
@@ -511,7 +536,7 @@ ProfileTime.prototype.checkLocationTime = function(locations) {
  * */
 ProfileTime.prototype.processLocationTime = function(results) {
     if (!(results instanceof Object) || !results.time ){
-        this.getTimeCallback("Time Unknown.");
+        this.failedRequest("Time Unknown.");  
         my_log("ProfileTime: Time Unknown."); /** @TODO remove log */
         return ;
     }
@@ -568,7 +593,7 @@ ProfileTime.prototype.processLocationTime = function(results) {
     //Round mins difference to closest 5, keeping sign.
     minsDiff = (minsDiff < 0 ? -1 : 1) * Math.ceil(Math.abs(minsDiff)/5)*5; 
     
-    this.timeStatus.minsDiff = -1*minsDiff;
+    this.timeStatus.totalMinsDiff = -1*minsDiff;
     this.timeStatus.hoursDiff = -1*hoursDiff;
     this.timeStatus.timezone  = results.timezone;
     this.setExpirationTime();
@@ -578,56 +603,279 @@ ProfileTime.prototype.processLocationTime = function(results) {
     my_log("difference: " + -1*hoursDiff +" hrs " + -1*minsDiff +" minutes");
     this.timeStatusAcquired();
 };
-
+/**
+ * Safe way of calling failure callback.
+ * @param {String} message The message to pass on to onFailure.
+ */
+ProfileTime.prototype.failedRequest = function(message){
+    if (this.getTimeCallback){
+        this.getTimeCallback.onFailure.call(this.getTimeCallback, message);    
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// End ProfileTime
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
+////////////////////////////////////////////////////////////////////////////
+//// Start Util object
+////////////////////////////////////////////////////////////////////////////
+/**
+ * A singleton object containing helpful utility functions.
+ * @type Utils (Static)
+ * @version 0.1.0
+ */
+util = {
+    /**
+     * 
+     * @param {node} child
+     * @param {string} classname
+     * @param {number} depth The number of ancestors to check before giving up.
+     * <= 0 will go until it reaches <code>body</code>. Default is 10.
+     * @returns {node} The ancestor if found or 0 if not found
+     */
+    getAncestorByClassName:function(child, classname, depth){
+        if (typeof depth === 'undefined') {
+            depth = 10;
+        }
+        my_log("getAncestorByClassName: "+child.innerHTML);
+        var classRegEx = new RegExp("(^| )"+classname+"( |$)");
+        var parent = child.parentNode;
+        if (depth <= 0){
+            do {
+                if (classRegEx.test(parent.getAttribute('class'))){
+                    return parent;
+                }
+                parent = parent.parentNode;
+            } while(parent.tagName.toLowerCase() !== 'body');
+        } else {
+            for (var parentCount = depth; parentCount >= 0; parentCount--){
+                if (classRegEx.test(parent.getAttribute('class'))){
+                    return parent;
+                }
+                parent = parent.parentNode;
+            }
+        }
+        return 0;
+    },
+    /**
+     * Returns the passed number as a zero padded number. 
+     * @param {number/string} number The number to pad with leading zeroes
+     * @param {number} length The amount of numbers to have.
+     * @returns {string} The padded number as a string.
+     */
+    leadingZeroPad:function(number, length){
+        var result = ''; 
+        number = ''+number;
+        for(var zeroes = 0, SIZE = length - number.length ; zeroes < SIZE; zeroes++){
+            result+='0';
+        }
+        return result + number;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////
+//// End util object
+////////////////////////////////////////////////////////////////////////////
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// Start TimeToolTip object
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/** Creates a time tooltip to display time.
+/** 
+ * Fetches and displays the local time of the passed namelink. 
+ * Times are shown by hovering over the chatbox.
+ * 
  * The initial state of the tool tip is to display: 
- * 
+ * "Bob's time: Loading..." and upon successfully getting a time:
+ * "Bob's time: 23:00 CET"
+ * <br/>
+ * On failure it reads: "Cannot determine Bob's time =(".
+ * <br/>
  * The time is acquired via ProfileTime.
+ * <br/>
+ * @todo Create a time tooltip to display time.
  * 
- * @version 0.1.0
- * @this ProfileTime
- * @param {Element} nameLink The DOM object with their profile link and name. */
+ * @version 0.2.0
+ * @this TimeToolTip
+ * @param {node} nameLink The DOM object with their profile link and name. */
 function TimeToolTip(nameLink){
-    var url = nameLink.getAttribute("href");
-    var name = "" + nameLink.innerHTML;
+    var hrefUrl = nameLink.getAttribute("href");
+    var name = "" + nameLink.innerHTML;    
+    
     //To say "Bob's time: " or "Jess' time: "
-    var firstNamePossessive = name.substring(0, name.indexOf(" ")); 
-    if (firstNamePossessive.indexOf("s") === firstNamePossessive.length -1){
-        firstNamePossessive += "'"; // Jess' time
+    this.firstNamePossessive = name.substring(0, name.indexOf(" ")); 
+    if (this.firstNamePossessive.indexOf("s") === this.firstNamePossessive.length -1){
+        this.firstNamePossessive += "'"; // Jess' time
     } else {
-        firstNamePossessive += "'s" //Bob's time
+        this.firstNamePossessive += "'s"; //Bob's time
     }
     
-    var colour = "red";
-    var toopTipStyle =  "border: 10px "+colour+" solid;" + 
-                        "border-radius: 10px; background:"+ colour +"; font: white;"
-    var timeStyle = "font-style: italic;"
-    var bottomTriangleStyle =   "border-left: 10px transparent solid; "+
-                                "border-right: 10px transparent solid; "+
-                                "border-top: 10px "+colour+" solid; width: 0px;";
-     
-    var toolTip = document.createElement("div");
-        toolTip.setAttribute("style", toopTipStyle);
-        toolTip.innerHTML = firstNamePossessive + " time:";
-        /** @TODO add tooltip triangle */
-    var timeElement = document.createElement("span");
-        timeElement.setAttribute("style", timeStyle);
-        
-        timeElement.innerHTML = "Loading...";
-        
-        toolTip.appendChild(timeElement);
+     /** Function currently unused.
+      * @todo Add to page
+      * @todo give position of container via style
+      * @todo give position related to the title of box
+      * */
+    var createToolTip = function(){ 
+        var cssID = 'timetool-custom-style';
+        //insert custom style once
+        if (!document.getElementById(cssID)){
+            var colour = "red";
+            var toolTipStyle =  ".timetool-custom-tooltip { border: 10px "+colour+" solid; \n" + 
+                                "border-radius: 10px; \nbackground:"+ colour +
+                                "; \nfont: white;\n }";
+            var timeStyle = ".timetool-custom-time { font-style: italic; }";
+            var bottomTriangleStyle =   ".timetool-custom-arrow {\n"+
+                                         "border-left: 10px transparent solid; \n"+
+                                        "border-right: 10px transparent solid; \n"+
+                                        "border-top: 10px "+colour+" solid; width: 0px; \n }";
+            var toolTipCss = document.createElement('style');
+                          toolTipCss.setAttribute('type', 'text/css');
+                          toolTipCss.setAttribute('id', 'cssID');
+                          toolTipCss.innerHTML = toolTipStyle + timeStyle + bottomTriangleStyle;
+            var head	= document.getElementsByTagName('head')[0];
+            if ( head){
+                head.appendChild(toolTipCss);
+            }    
+        }
+
+        var toolTip = document.createElement("div");
+            toolTip.setAttribute("class", "timetool-custom-tooltip");
+            toolTip.innerHTML = this.firstNamePossessive + " time: ";
+            /** @TODO add tooltip triangle */
+        var timeElement = document.createElement("span");
+            timeElement.setAttribute("class", "timetool-custom-time");
+
+            timeElement.innerHTML = "Loading...";
+
+            toolTip.appendChild(timeElement);
+
+        var arrow = document.createElement("div");
+            arrow.setAttribute("class", "timetool-custom-arrow");
+
+        this.   container = document.createElement("div");
+                container.appendChild(toolTip);
+                container.appendChild(arrow);
+    };
     
+    /** @type number The difference in the local Date from their date in milliseconds. 
+     * That is: <code>new Date().getTime()  - Foreign.getTime()</code>.
+     * Default is <code>false</code> Can be 0.. */
+    this.datedifference = 0;          
+    /** @type String The current timezome for this chatbox. Default is 0. */
+    this.timezone = 0;
+    
+    var timecallback = new BinaryCallback(
+            this,
+            function(param){
+                my_log("success!: ");
+                this.datedifference = new Date().getTime() - param['date'].getTime();
+                this.timezone = param['timezone'];
+                my_log(this.date);
+                my_log(this.timezone);
+                this.timeUpdate();
+            },
+            function(param){
+                if ( this.chatContainer){
+                    this.chatContainer.removeEventListener('mouseover',
+                            this.eventListeners['mouseover']);
+                }
+                this.updateTimePhrase("Cannot determine "+this.firstNamePossessive+" time =(");                
+            }
+            );
+    
+    /** @type String Public reference to the url. */           
+    this.url = hrefUrl;
+    /** @type node The chat container parent. */
+    this.chatContainer = util.getAncestorByClassName(nameLink, 'fbNub', 20);               
+    
+    var time = new ProfileTime(hrefUrl);
+        time.getTime(timecallback);
+    
+    /** The interval reference. Default is 0. */
+    this.updateTimeInterval = 0;
+    this.eventListeners = {};
+    if (this.chatContainer ){
+        this.chatContainer['_TimeToolTip'] = this;
+        this.eventListeners['mouseover'] = 
+                this.chatContainer.addEventListener(
+                            'mouseover', 
+                            function() {
+                                this._TimeToolTip.timeUpdate();
+                            }, 
+                            false); 
+    } else {
+        my_log(this+": No chat container found");
+    }
+                
+    //Show or hide a styled tool tip at the mouse location.
+    /* nameLink.parentNode
+            .addEventListener(
+                'mouseover', 
+                function(evt) {
+                    my_log("event: "+evt.target);
+                    my_log("event: "+evt.clientX +","+evt.clientY);
+                }, false); */    
 }
+/**Simple toString function for debugging purposes.
+ *  @returns {String} The class name and url for this object.
+ */
+TimeToolTip.prototype.toString = function(){
+    return "TimeToolTip["+this.url+"]";
+};
+
+/**
+ * Starts the time interval to update the time display. */
+TimeToolTip.prototype.startTimeUpdateInterval = function(){
+    this.updateTimeInterval = setInterval(
+            function(){
+                //if the chat window still exists.
+                if(this.chatSuperContainer){
+                    my_log(this + "startTimeUpdateInterval", true);
+                    this.timeUpdate();
+                } else {
+                    //if not, we have no need to update time.
+                    clearInterval(this.updateTimeInterval);
+                }
+            },
+            1000
+            );
+};
+
+/**
+ * Updates the time display.  */
+TimeToolTip.prototype.timeUpdate = function(){
+    //if the chat window still exists.
+    if(this.chatContainer){
+        my_log(this + ": trying to update time", true);
+        var timePhrase = this.firstNamePossessive + " time: ";
+        if (this.datedifference !== false && this.timezone){
+            //We subtract as we subtracted in this order before. 
+            var date = new Date(new Date().getTime() - this.datedifference);
+            timePhrase+= 
+                    util.leadingZeroPad(date.getHours(), 2)+":"+
+                    util.leadingZeroPad(date.getMinutes(), 2)+":"+
+                    util.leadingZeroPad(date.getSeconds(), 2)+
+                    " "+this.timezone;
+        } else {
+            timePhrase+= " Loading...";
+        }
+        this.updateTimePhrase(timePhrase);
+    } else {
+        my_log(this + ": cannot update time", true);
+    }
+};
+/**
+ * Updates the timephrase where ever it is displayed.
+ * @param {String} timePhrase The time phrase to update.
+ */
+TimeToolTip.prototype.updateTimePhrase = function(timePhrase){
+    if (this.chatContainer){
+        this.chatContainer.setAttribute('title', timePhrase);
+        my_log(this + ": updateTimePhrase - " +timePhrase, true);
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// End TimeToolTip
@@ -646,7 +894,7 @@ function TimeToolTip(nameLink){
  
 /** Singleton.
  * Responsible for checking the page for changes and attaching events.
- * @version 0.2.1 */
+ * @version 0.2.3 */
 pageMonitor = {
     /** Check frequency in milliseconds. */
     checkFrequency: 5000,
@@ -658,8 +906,11 @@ pageMonitor = {
     /** The chat pagelet container. */
     chatPagelet: 0, 
     
-    /**The class that is checked in #checkChats().  */
-    checkedClass: 'titlebarText',
+    /** Mirror classes to maxChat's; contains the minimized names.  */
+    minChatClass: 'name',
+    /**The class that is checked in #checkChats(). 
+     * Contains the names (Maximized)  */
+    maxChatClass: 'titlebarText',
     /** The pagelet's id to monitor. */
     chatPageletId: 'ChatTabsPagelet',
     
@@ -668,7 +919,7 @@ pageMonitor = {
     /** Whether or not we are currently checking the chats. */
     isCheckingChats: false,
     
-    /** Check every 500 milliseconds to register the paglet.
+    /** 
      * Once registered, we set event listeners to fire onDOMNodeInserted and onDOMNodeRemoved to  
      * call #pageMonitor.checkChats */
     registerPagelet:function(){
@@ -681,7 +932,7 @@ pageMonitor = {
                 e.addEventListener ("DOMNodeRemoved", function(){ pageMonitor.checkChats(); }, false);
                 pageMonitor.checkChats();
                 return; 
-            } else {
+            } else { //in case the page has yet to load.
                 window.addEventListener('load', function() {pageMonitor.registerPagelet();}, false);                
             }
         } 
@@ -692,10 +943,11 @@ pageMonitor = {
      * their 'onhover' events. */
     checkChats:function(){
         if(pageMonitor.isCheckingChats) return; 
-        pageMonitor.isCheckingChats = true; //this prevents multiple calls running over each other.
+        //this prevents multiple calls running over each other when using intervals.
+        pageMonitor.isCheckingChats = true; 
         my_log("checking chats..."); /** @TODO remove log */
         
-        var checkedSet = document.getElementsByClassName(pageMonitor.checkedClass);
+        var checkedSet = document.getElementsByClassName(pageMonitor.maxChatClass);
         
         if (!pageMonitor.chatSet){ //on first run
             my_log("setting", true); /** @TODO remove log */
@@ -706,9 +958,9 @@ pageMonitor = {
                     " ("+pageMonitor.chatSet.length+")",
                     true); /** @TODO remove log */
             var changed = checkedSet.length !== pageMonitor.chatSet.length ? true : false;
-            for(var i=0,j=checkedSet.length; i<j; i++){               
-              if ( checkedSet[i] !== pageMonitor.chatSet[i] ){
-                  my_log("different item at "+ i, true);
+            for(var index=0,SIZE=checkedSet.length; index<SIZE; index++){               
+              if ( checkedSet[index] !== pageMonitor.chatSet[index] ){
+                  my_log("different item at "+ index, true);
                   changed=true;
               }
             };
@@ -726,13 +978,13 @@ pageMonitor = {
         
         pageMonitor.isCheckingChats = false;        
         
-        //we have new windows, so we have work to do.
-        for(var i=0,j=checkedSet.length; i<j; i++){
-           var time = new ProfileTime(checkedSet[i].getAttribute("href"));
-           time.getTime();
-        
-            my_log("checkedSet name: " + checkedSet[i].innerHTML +
-                  "url: " + checkedSet[i].getAttribute("href")  ); /** @TODO remove log */
+        //we have new chat windows, so we have work to do.
+        for(var index=0,SIZE=checkedSet.length; index<SIZE; index++){
+            try {
+                new TimeToolTip(checkedSet[index]);
+            } catch (e){
+                my_log('Index['+index+ '] An error occured : ' + e);
+            }           
         };
     },
     
