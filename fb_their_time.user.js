@@ -5,8 +5,13 @@
 // @description Provides a simple tool tip to display a contacts current time.
 // @include     https://www.facebook.com/*
 // @include     http://www.facebook.com/*
-// @version     0.2.0
+// @exclude     /^https?://www\.facebook\.com/((xti|ai)\.php|.*?\.php.*?[\dA-z_\-]{40})/
+// @version     0.2.1
 // ==/UserScript==
+
+/** 
+ * Now excluding the xti.php, ai.php and all other very long query strings.
+ * */
 
 var DEBUGGING = false;
 var VERBOSE = false;
@@ -26,7 +31,7 @@ var VERBOSE = false;
         unsafeWindow.console.log(message);         
     }
 };
-
+my_log('Logging turned on');
 /** Days of the week as given by Google, ordered: Sunday is [0]. */
 var DAYS_OF_WEEK = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -895,19 +900,30 @@ pageMonitor = {
     
     /** 
      * Once registered, we set event listeners to fire onDOMNodeInserted and onDOMNodeRemoved to  
-     * call #pageMonitor.checkChats */
-    registerPagelet:function(){
-        if (!pageMonitor.chatPagelet){
-            var e = document.getElementById(pageMonitor.chatPageletId);
-            if ( e ){
-                pageMonitor.chatPagelet = e;  
+     * call #pageMonitor.checkChats 
+     * @param Object|pageMonitor parent (optional) Used as an accurate reference,
+     * for recursive calls. If unset, sets it. */
+    registerPagelet:function(parent){
+        if (!parent){
+            parent = pageMonitor;
+        }
+        my_log('location test: ' + window.location);
+        if (!parent.chatPagelet){
+            var e = document.getElementById(parent.chatPageletId);
+            if ( e && !e.pageMonitor_registered_and_checked){
+                parent.chatPagelet = e;  
                 /** @todo Dom mutation events are deprecated; replace with dom mutations. */
-                e.addEventListener ("DOMNodeInserted", function(){ pageMonitor.checkChats();}, false);
-                e.addEventListener ("DOMNodeRemoved", function(){ pageMonitor.checkChats(); }, false);
-                pageMonitor.checkChats();
+                e.addEventListener ("DOMNodeInserted", function(){ parent.checkChats();}, false);
+                e.addEventListener ("DOMNodeRemoved", function(){ parent.checkChats(); }, false);
+                my_log('registerPagelet: event added');
+                parent.checkChats();
+                e.pageMonitor_registered_and_checked = true;
                 return; 
             } else { //in case the page has yet to load.
-                window.addEventListener('load', function() {pageMonitor.registerPagelet();}, false);                
+                //window.addEventListener('load', function() {pageMonitor.registerPagelet(); my_log('registerPagelet: On load');}, false);
+                //chats are not inserted on page load; keep checking. 
+                setTimeout(function() {parent.registerPagelet(parent); 
+                            my_log('registerPagelet: On load');}, 800);                
             }
         } 
         
@@ -973,7 +989,7 @@ pageMonitor = {
         clearInterval(this.checkInterval);
     }
 };
-
+        
 //start monitoring
 pageMonitor.start();
 //Reset script
