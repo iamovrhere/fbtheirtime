@@ -6,7 +6,7 @@
 // @include     https://www.facebook.com/*
 // @include     http://www.facebook.com/*
 // @exclude     /^https?://www\.facebook\.com/((xti|ai)\.php|.*?\.php.*?[\dA-z_\-]{40})/
-// @version     0.2.1
+// @version     0.2.2
 // ==/UserScript==
 
 /** 
@@ -873,7 +873,7 @@ TimeToolTip.prototype.updateTimePhrase = function(timePhrase){
  
 /** Singleton.
  * Responsible for checking the page for changes and attaching events.
- * @version 0.2.3 */
+ * @version 0.2.4 */
 pageMonitor = {
     /** Check frequency in milliseconds. */
     checkFrequency: 5000,
@@ -967,15 +967,34 @@ pageMonitor = {
         }
         
         pageMonitor.isCheckingChats = false;        
-        
+                
+        my_log('checkedSet length: '+ checkedSet.length);
         //we have new chat windows, so we have work to do.
         for(var index=0,SIZE=checkedSet.length; index<SIZE; index++){
             try {
-                new TimeToolTip(checkedSet[index]);
+                pageMonitor.attemptToolTip(checkedSet[index], 600);
             } catch (e){
                 my_log('Index['+index+ '] An error occured : ' + e);
             }           
         };
+    },
+    /**
+     * Attempts to create tool tip, if not found retries in retryTime
+     * @param {Element} checkedLink The &lt;a&gt; element
+     * @param {Number} retryTime The delay before retring in milliseconds
+     * @returns {undefined}
+     */
+    attemptToolTip: function(checkedLink, retryTime){
+        var hrefUrl = checkedLink.getAttribute("href");
+        var name = "" +checkedLink.innerHTML; 
+
+        my_log('attemptToolTip: '+ checkedLink.outerHTML);
+        if (!hrefUrl || !name){
+            //we have blanks, so we must retry.
+            setTimeout(function(){pageMonitor.attemptToolTip(checkedLink, retryTime);}, retryTime);
+        } else {
+            new TimeToolTip(checkedLink);
+        }
     },
     
     
