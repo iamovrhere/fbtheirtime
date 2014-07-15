@@ -6,7 +6,9 @@
 // @include     https://www.facebook.com/*
 // @include     http://www.facebook.com/*
 // @exclude     /^https?://www\.facebook\.com/((xti|ai)\.php|.*?\.php.*?[\dA-z_\-]{40})/
-// @version     0.2.2
+// @version     0.2.3
+// @grant       GM_xmlhttpRequest
+// @grant       unsafeWindow
 // ==/UserScript==
 
 /** 
@@ -40,6 +42,10 @@ var DAYS_OF_WEEK = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Fri
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// Start storage object
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
+//fix for bug with Firefox 29.
+// See: http://stackoverflow.com/questions/23269532/localstorage-in-firefox-extension-throws-the-operation-is-insecure-exception
+var localStorage = unsafeWindow.localStorage;
+
 /** Reads and writes objects to storage. 
  * It is worth noting this cannot be inspected by cookie manager.
  * 
@@ -73,8 +79,10 @@ storage = {
     /** Retrieves an Object stored to local storage, parses and returns it.
      * @param {String} key The key of the session.  
      * @returns  The stored Object or <code>null</code>. */
-    getObject:function(key) {  
+    getObject:function(key) { 
+        
         var value = localStorage.getItem(storage.id); 
+        
         if (value){
             try{
                 var obj = JSON.parse (value);
@@ -409,7 +417,7 @@ ProfileTime.prototype.toString = function() {
 /** Generic failure of the request. 
  * @param {string} message The failure message. */
 ProfileTime.prototype.onFailure = function(message) {
-    my_log(message);
+    my_log("failure:  " +message);
 };
 
 //Step 4: Finish
