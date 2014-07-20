@@ -6,7 +6,7 @@
 // @include     https://www.facebook.com/*
 // @include     http://www.facebook.com/*
 // @exclude     /^https?://www\.facebook\.com/((xti|ai)\.php|.*?\.php.*?[\dA-z_\-]{40})/
-// @version     0.2.3
+// @version     0.2.4
 // @grant       GM_xmlhttpRequest
 // @grant       unsafeWindow
 // ==/UserScript==
@@ -38,6 +38,17 @@ my_log('Logging turned on');
 var DAYS_OF_WEEK = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 
+/** Work around for the bug:<br/>
+ * <b>Error: Greasemonkey access violation: unsafeWindow cannot call 
+ * <code>GM_xmlhttpRequest</code></b>
+ * @param {Object} content The request content to pass onto GM_xmlhttpRequest.
+ */
+//see: http://wiki.greasespot.net/Greasemonkey_access_violation
+function myGM_xmlhttpRequest(content){
+    setTimeout(function() {
+       GM_xmlhttpRequest(content);
+    }, 0);
+ }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// Start storage object
@@ -166,8 +177,8 @@ myHttpRequests = {
      * */
     facebookLocation:function(dest, callback) {
         my_log("facebookLocation: trying "+dest); 
-        
-        GM_xmlhttpRequest({
+                
+        myGM_xmlhttpRequest({
           method: "GET",
           url: dest,
           headers: {
@@ -175,6 +186,7 @@ myHttpRequests = {
             "Accept": "text/html"            // If not specified, browser defaults will be used.
           },
           onload: function(response) {
+            my_log("facebookLocation: onload-starting response("+dest+")", true);            
               var responseXML; 
                 if (!response.responseXML) {                    
                   responseXML = new DOMParser()
@@ -202,7 +214,8 @@ myHttpRequests = {
                 callback.onFailure.call(callback);
             }
         }
-        );        
+        );  
+    my_log("facebookLocation: GM_xmlhttpRequest sent ("+dest+")", true); 
     },
     
     /** 
@@ -222,7 +235,7 @@ myHttpRequests = {
     googleCurrentTime:function(location, callback) {
         var dest = "http://www.google.com/search?q=" +myHttpRequests.google_queryStub + location;
         
-        GM_xmlhttpRequest({
+        myGM_xmlhttpRequest({
           method: "GET",
           url: dest,
           headers: {
@@ -980,6 +993,7 @@ pageMonitor = {
         //we have new chat windows, so we have work to do.
         for(var index=0,SIZE=checkedSet.length; index<SIZE; index++){
             try {
+                my_log('Index['+index+ ']: attempting: attemptToolTip', true);
                 pageMonitor.attemptToolTip(checkedSet[index], 600);
             } catch (e){
                 my_log('Index['+index+ '] An error occured : ' + e);
