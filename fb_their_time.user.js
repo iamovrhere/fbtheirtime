@@ -6,7 +6,7 @@
 // @include     https://www.facebook.com/*
 // @include     http://www.facebook.com/*
 // @exclude     /^https?://www\.facebook\.com/((xti|ai)\.php|.*?\.php.*?[\dA-z_\-]{40})/
-// @version     0.2.4
+// @version     0.2.5
 // @grant       GM_xmlhttpRequest
 // @grant       unsafeWindow
 // ==/UserScript==
@@ -118,15 +118,19 @@ storage = {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /** Handles httpRequests to facebook and google. 
- * @version 0.5.1 */
+ * @version 0.5.2 */
 myHttpRequests = {
     /** The Facebook class used to contain "about me" summaries on the front page. */
     fb_aboutClass: '_4_ug',
     /** The Google query stub to determine a location's time. */
     google_queryStub: 'current time in ', 
-    /** The Google container class to find the time-answer in. 
+   
+   /** The Google container class to find the time-answer in. 
      * If this does not exists the answer is not simple. */
-    google_containerClass: 'obcontainer',
+    google_containerClass: 'g',
+    /** The Google OLD container class to find the time-answer in. 
+     * If this does not exists the answer is not simple. */
+    google_containerClass1: 'obcontainer',
     
     /** 
      * Gathers the location from the DOM. 
@@ -249,38 +253,19 @@ myHttpRequests = {
                 } else {
                     responseXML = response.responseXML;
                 }
-                var answer = responseXML.documentElement
-                                        .getElementsByClassName(myHttpRequests.google_containerClass);
+                my_log('Loading Google request for: "' + location + '"');
+                my_log("Full response: " + responseXML.documentElement.innerHTML, true);
                 var result = new Object();
+                var answer = responseXML.documentElement
+                        .getElementsByClassName(myHttpRequests.google_containerClass);
+                //for fallback reasons.
+                var answer1 = responseXML.documentElement
+                        .getElementsByClassName(myHttpRequests.google_containerClass1);
                 
-                if (answer && answer.length){                
-                    var table = answer[0].getElementsByTagName('table'); //check first item
-                    if (table && table.length){
-                        var inner = "" + table[0].getElementsByTagName('td')[0].innerHTML;
-                        
-                        result['time'] = "";
-                        result['timezone'] = "";
-                        result['day'] = "";
-                        result['dayIndex'] = "";
-                        
-                        //gets first bold tag, typically time
-                        result['time'] = table[0].getElementsByTagName('b')[0].innerHTML; 
-                        //gets first bracketed data (minus brackets), typically timezone
-                        result['timezone'] = inner.substring(inner.indexOf("(")+1, inner.indexOf(")") );
-                        
-                        
-                        for(var i=0,j=DAYS_OF_WEEK.length; i<j; i++){
-                            var index = inner.indexOf(DAYS_OF_WEEK[i]);
-                            //Checks to see if it not only exists but that it refers 
-                            //to the day not the location.
-                              
-                            if (index > 0 && index < inner.length/2 ){                               
-                              result['day'] = DAYS_OF_WEEK[i];
-                              result['dayIndex'] = i;
-                              break;
-                          }                            
-                        };                                        
-                    }
+                if (answer && answer.length){
+                    result = myHttpRequests.extractionMethod2(answer);                        
+                } else if (answer1 && answer1.length){                
+                    result = myHttpRequests.fallbackExtractionMethod1(answer1);
                 } else {
                     result= "No answer found.";                    
                 }
@@ -299,6 +284,83 @@ myHttpRequests = {
             }
         }
         ); 
+    },
+    /** New extraction method to deal with changes of the DOM.
+     * No more tables.
+     * @param {Array} answer Array of elements
+     * @returns {myHttpRequests.extractionMethod2.result|Object}
+     */
+    extractionMethod2:function(answer, result){
+        var result = new Object();
+        var container = answer[0]; //first item
+
+        //initialize
+        result['time'] = "";
+        result['timezone'] = "";
+        result['day'] = "";
+        result['dayIndex'] = "";
+
+        //grabbing the time items via classes. Redundancy for robustness.
+        var timeItem = container.getElementsByClassName('_rkc');
+        var timeItem2 = container.getElementsByClassName('_Peb');
+
+        if (timeItem && timeItem.length){
+            result['time'] = timeItem[0].innerHTML;
+        } else if (timeItem2 && timeItem.length){
+            result['time'] = timeItem2[0].innerHTML;
+        }
+        var inner = container.innerHTML;
+        
+        //gets first bracketed data (minus brackets), typically timezone
+        result['timezone'] = inner.substring(inner.indexOf("(")+1, inner.indexOf(")") );
+
+
+        for(var i=0,j=DAYS_OF_WEEK.length; i<j; i++){
+            var index = inner.indexOf(DAYS_OF_WEEK[i]);
+            //Checks to see if it not only exists but that it refers to the day 
+            // not a location by ensuring it does NOT occur in the last third.
+            if (index > 0 && index < inner.length*0.66 ){                               
+              result['day'] = DAYS_OF_WEEK[i];
+              result['dayIndex'] = i;
+              break;
+          }                            
+        }; 
+        return result;
+    },
+    /** Deprecated. Major DOM changes have made this useless.
+     * This was the first old method of extraction; kept as a fall-back.
+     * @param {Array} answer Array of elements.   
+     * @return {myHttpRequests.fallbackExtractionMethod1.result|Object} */
+    fallbackExtractionMethod1:function(answer){
+        var result = new Object();
+        var table = answer[0].getElementsByTagName('table'); //check first item
+        if (table && table.length){
+            var inner = "" + table[0].getElementsByTagName('td')[0].innerHTML;
+            
+            result['time'] = "";
+            result['timezone'] = "";
+            result['day'] = "";
+            result['dayIndex'] = "";
+
+            //gets first bold tag, typically time
+            result['time'] = table[0].getElementsByTagName('b')[0].innerHTML; 
+            //gets first bracketed data (minus brackets), typically timezone
+            result['timezone'] = inner.substring(inner.indexOf("(")+1, inner.indexOf(")") );
+
+
+            for(var i=0,j=DAYS_OF_WEEK.length; i<j; i++){
+                var index = inner.indexOf(DAYS_OF_WEEK[i]);
+                //Checks to see if it not only exists but that it refers 
+                //to the day not the location.
+
+                if (index > 0 && index < inner.length/2 ){                               
+                  result['day'] = DAYS_OF_WEEK[i];
+                  result['dayIndex'] = i;
+                  break;
+              }                            
+            };                                        
+        }
+        return result;
     },
     
     foo:function(){}
