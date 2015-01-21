@@ -1,12 +1,12 @@
-A facebook greasmonkey/userscript to show their local time. 
+A facebook greasemonkey/userscript to show their local time. 
 
-A more indepth write up can be found [here](http://myprojects.ovrhere.com/userscripts/#fb-their-time).
+A more in-depth write up can be found [here](http://myprojects.ovrhere.com/userscripts/#fb-their-time).
 
 ##LICENSE
 
 ###MIT LICENSE
 
-Copyright (c) 2014 Jason J.
+Copyright (c) 2014 - 2015 Jason J. (iamovrhere)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

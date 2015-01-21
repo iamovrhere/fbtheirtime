@@ -6,7 +6,7 @@
 // @include     https://www.facebook.com/*
 // @include     http://www.facebook.com/*
 // @exclude     /^https?://www\.facebook\.com/((xti|ai)\.php|.*?\.php.*?[\dA-z_\-]{40})/
-// @version     0.2.5
+// @version     0.2.6
 // @grant       GM_xmlhttpRequest
 // @grant       unsafeWindow
 // ==/UserScript==
@@ -118,10 +118,12 @@ storage = {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /** Handles httpRequests to facebook and google. 
- * @version 0.5.2 */
+ * @version 0.6.0 */
 myHttpRequests = {
     /** The Facebook class used to contain "about me" summaries on the front page. */
-    fb_aboutClass: '_4_ug',
+    fb_aboutClass: '_50f3',
+        
+    
     /** The Google query stub to determine a location's time. */
     google_queryStub: 'current time in ', 
    
@@ -147,15 +149,50 @@ myHttpRequests = {
                 aboutPerson + " " + aboutPerson.length, true); 
         
         for (var i = aboutPerson.length - 1; i >= 0; i--){
-          var string = ""+aboutPerson[i].innerHTML;
-          if (string.contains("Lives in", 0)){
-            livesIn = aboutPerson[i].getElementsByTagName('a')[0].innerHTML;
-          } else if (string.contains("From", 0)){
-              fromLoc = aboutPerson[i].getElementsByTagName('a')[0].innerHTML;
+          
+          livesIn = myHttpRequests.extractLocation(aboutPerson[i], "Lives in");
+          if (livesIn.length === 0){
+              //if still empty, try "From"
+              fromLoc = myHttpRequests.extractLocation(aboutPerson[i], "From");
+          } 
+          if (fromLoc.length === 0){
+              //if STILL empty, try "Also from"
+              fromLoc = myHttpRequests.extractLocation(aboutPerson[i], "Also from");
           }
+          if (fromLoc.length > 0 || livesIn.length > 0){
+              //if non-empty locations; 
+              break;
+          }
+          //at this point, we have it or give up.
+              
         };
+        
         my_log("fbLocationFromDOM: " +livesIn+","+fromLoc, true);
         return { lives: livesIn, from: fromLoc };
+    },
+    
+    /**
+     * Extracts the location from the facebook dom.
+     * 
+     * @param {Element|Object} parentDom The parent dom object to check
+     * @param {String} searchString The search string to look for;
+     * e.g. "Lives in", "From", "Also from"
+     * @returns {String} The location from the dom
+     */
+    extractLocation:function(parentDom, searchString){
+        var string = "" + parentDom.innerHTML;
+        
+        if (string.contains(searchString, 0)){
+            try {
+              return parentDom.getElementsByTagName('a')[0].innerHTML;
+
+            } catch (e){
+              /* if we failed, there must be no link. 
+               * Perhaps it's just one string? Try to split on search string.    */
+              return string.split(searchString)[1]; 
+            }
+        }
+        return "";
     },
     
     /** Facebook likes to pass around code with sections commented out. 
