@@ -6,7 +6,7 @@
 // @include     https://www.facebook.com/*
 // @include     http://www.facebook.com/*
 // @exclude     /^https?://www\.facebook\.com/((xti|ai)\.php|.*?\.php.*?[\dA-z_\-]{40})/
-// @version     0.2.6
+// @version     0.2.7
 // @grant       GM_xmlhttpRequest
 // @grant       unsafeWindow
 // ==/UserScript==
@@ -17,6 +17,7 @@
 
 var DEBUGGING = false;
 var VERBOSE = false;
+var NO_CACHE = false;
 
 /** Convience function for debugging. 
  * @param {string} message The message to output.
@@ -118,7 +119,7 @@ storage = {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /** Handles httpRequests to facebook and google. 
- * @version 0.6.0 */
+ * @version 0.6.1 */
 myHttpRequests = {
     /** The Facebook class used to contain "about me" summaries on the front page. */
     fb_aboutClass: '_50f3',
@@ -150,24 +151,27 @@ myHttpRequests = {
         
         for (var i = aboutPerson.length - 1; i >= 0; i--){
           
-          livesIn = myHttpRequests.extractLocation(aboutPerson[i], "Lives in");
-          if (livesIn.length === 0){
-              //if still empty, try "From"
-              fromLoc = myHttpRequests.extractLocation(aboutPerson[i], "From");
-          } 
-          if (fromLoc.length === 0){
+	  my_log("fbLocationFromDOM: " + aboutPerson[i].innerHTML);
+	  
+	  if (0 === livesIn.length) { //if unset
+	    livesIn = myHttpRequests.extractLocation(aboutPerson[i], "Lives in");
+	  }
+	  if (0 === fromLoc.length) { //if unset
+	    fromLoc = myHttpRequests.extractLocation(aboutPerson[i], "From");
+	    if (fromLoc.length === 0){
               //if STILL empty, try "Also from"
               fromLoc = myHttpRequests.extractLocation(aboutPerson[i], "Also from");
-          }
-          if (fromLoc.length > 0 || livesIn.length > 0){
-              //if non-empty locations; 
-              break;
-          }
-          //at this point, we have it or give up.
+	    }
+	  }	  
+          
+          if (fromLoc.length > 0 && livesIn.length > 0){
+             //if non-empty locations; 
+             break;
+          }//at this point, we have them both
               
         };
         
-        my_log("fbLocationFromDOM: " +livesIn+","+fromLoc, true);
+        my_log("fbLocationFromDOM: lives->" +livesIn+", from->"+fromLoc, true);
         return { lives: livesIn, from: fromLoc };
     },
     
@@ -587,7 +591,7 @@ ProfileTime.prototype.getTime = function(callback) {
         this.timeStatus = userStore;
     }    
     
-    if (userStore && this.checkIfTimeValid()){
+    if (userStore && this.checkIfTimeValid() && !NO_CACHE){
         this.timeStatusAcquired();        
     } else {    
         myHttpRequests.facebookLocation(this.url, this.facebookLocationCallback);
@@ -822,12 +826,20 @@ util = {
  * The time is acquired via ProfileTime.
  * <br/>
  * 
- * @version 0.3.0
+ * @version 0.3.1
  * @this TimeToolTip
  * @param {node} nameLink The DOM object with their profile link and name. */
 function TimeToolTip(nameLink){
     var hrefUrl = nameLink.getAttribute("href");
-    var name = "" + nameLink.innerHTML;    
+    
+    var name = "";
+    var nameDom = nameLink; 
+    while (nameDom.getElementsByTagName('span').length > 0) {
+	nameDom = nameDom.getElementsByTagName('span')[0];
+    }
+    //bottom span, now get the name.
+    name = nameDom.innerHTML;
+    nameDom = 0;
     
     //To say "Bob's time: " or "Jess' time: "
     this.firstNamePossessive = name.substring(0, name.indexOf(" ")); 
