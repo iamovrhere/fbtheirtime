@@ -826,7 +826,7 @@ util = {
  * The time is acquired via ProfileTime.
  * <br/>
  * 
- * @version 0.3.1
+ * @version 0.3.2
  * @this TimeToolTip
  * @param {node} nameLink The DOM object with their profile link and name. */
 function TimeToolTip(nameLink){
@@ -871,7 +871,13 @@ function TimeToolTip(nameLink){
     /** The interval reference. Default is 0. */
     this.updateTimeInterval = 0;
     var mouseoverfunc = function() {
-                                this._TimeToolTip.timeUpdate();
+                                my_log("mouseoverfunc", true); 
+                                /* This updates the DOM but does not update the visible text. 
+				 * this._TimeToolTip.startTimeUpdateInterval(); */
+				  this._TimeToolTip.timeUpdate();
+                            };
+    var mouseoutfunc = function() {
+                                my_log("mouseoutfunc", true);
                             };
     
     if (this.chatContainer ){
@@ -880,6 +886,11 @@ function TimeToolTip(nameLink){
                             'mouseover', 
                             mouseoverfunc, 
                             false);
+	this.chatContainer.addEventListener(
+                            'mouseout', 
+                            mouseoutfunc,
+                            false);
+	
        var cTitleOpen =   this.chatContainer.getElementsByClassName('titlebarTextWrapper');
        if (cTitleOpen.length > 0){
            this.chatTitleOpen = cTitleOpen[0];
@@ -906,6 +917,8 @@ function TimeToolTip(nameLink){
                 if ( this.chatContainer){
                     this.chatContainer.removeEventListener('mouseover',
                             mouseoverfunc);
+		    this.chatContainer.removeEventListener('mouseout',
+                            mouseoutfunc);
                 }
                 this.updateTimePhrase("Cannot determine "+this.firstNamePossessive+" time =(");                
             }
@@ -933,15 +946,18 @@ TimeToolTip.prototype.toString = function(){
 /**
  * Starts the time interval to update the time display. */
 TimeToolTip.prototype.startTimeUpdateInterval = function(){
+    var self = this;
     this.updateTimeInterval = setInterval(
             function(){
+	      
                 //if the chat window still exists.
-                if(this.chatSuperContainer){
-                    my_log(this + "startTimeUpdateInterval", true);
-                    this.timeUpdate();
-                } else {
+                if(self.chatContainer){
+                    my_log(self + "startTimeUpdateInterval - update", true);
+                    self.timeUpdate();
+                } else {		  
+                    my_log(self + "startTimeUpdateInterval - cancel", true);
                     //if not, we have no need to update time.
-                    clearInterval(this.updateTimeInterval);
+                    clearInterval(self.updateTimeInterval);
                 }
             },
             1000
